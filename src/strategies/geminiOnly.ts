@@ -4,7 +4,8 @@ import { SYSTEM_INSTRUCTION } from '../prompts/system.js';
 import { NidResultSchema } from '../core/models.js';
 import { StepTimer } from '../core/timer.js';
 import { toImageMimeType } from '../utils/mime.js';
-import { extractJson } from '../utils/json.js';
+import { extractJson }        from '../utils/json.js';
+import { normalizeNidJson }   from '../utils/normalize.js';
 import { config } from '../config/index.js';
 import type { NidImage, ExtractionResult } from '../core/types.js';
 import type { IExtractionStrategy } from './IExtractionStrategy.js';
@@ -41,8 +42,8 @@ export class GeminiOnlyStrategy implements IExtractionStrategy {
     });
     stopGemini();
 
-    const rawText  = getResponseText(interaction);
-    const extraction = NidResultSchema.parse(extractJson(rawText));
+    const rawText    = getResponseText(interaction);
+    const extraction = NidResultSchema.parse(normalizeNidJson(extractJson(rawText)));
 
     return {
       mode:            this.mode,

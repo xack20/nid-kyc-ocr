@@ -5,7 +5,8 @@ import { SYSTEM_INSTRUCTION } from '../prompts/system.js';
 import { NidResultSchema } from '../core/models.js';
 import { StepTimer } from '../core/timer.js';
 import { toImageMimeType } from '../utils/mime.js';
-import { extractJson } from '../utils/json.js';
+import { extractJson }       from '../utils/json.js';
+import { normalizeNidJson }  from '../utils/normalize.js';
 import { config } from '../config/index.js';
 import type { NidImage, ExtractionResult, VisionOutput } from '../core/types.js';
 import type { IExtractionStrategy } from './IExtractionStrategy.js';
@@ -118,7 +119,7 @@ export class CombinedStrategy implements IExtractionStrategy {
       geminiCallCount++;
     }
 
-    const extraction = NidResultSchema.parse(extractJson(getResponseText(interaction)));
+    const extraction = NidResultSchema.parse(normalizeNidJson(extractJson(getResponseText(interaction))));
 
     return {
       mode:            this.mode,

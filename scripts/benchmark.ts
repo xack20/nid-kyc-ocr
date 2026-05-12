@@ -12,6 +12,7 @@ import { NidResultSchema }             from '../src/core/models.js';
 import { StepTimer }                   from '../src/core/timer.js';
 import { toImageMimeType, mimeFromExt } from '../src/utils/mime.js';
 import { extractJson }                 from '../src/utils/json.js';
+import { normalizeNidJson }            from '../src/utils/normalize.js';
 import { ts }                          from '../src/utils/timestamp.js';
 import { GEMINI_MODELS }               from '../src/config/index.js';
 import type { NidResult }              from '../src/core/models.js';
@@ -124,7 +125,7 @@ async function runModel(modelId: string, imageBuffer: Buffer, mimeType: string):
   let extraction: NidResult | undefined;
   let parseError: string | undefined;
   try {
-    extraction = NidResultSchema.parse(extractJson(rawText));
+    extraction = NidResultSchema.parse(normalizeNidJson(extractJson(rawText)));
   } catch (err) {
     parseError = err instanceof Error ? err.message : String(err);
   }

@@ -63,6 +63,12 @@ For every extracted field compare your reading against the Cloud Vision text:
 
 When no Cloud Vision text is provided (gemini_only mode):
 - Use your own confidence assessment based on image clarity.
+- Map your internal uncertainty to the three-value scale:
+  - Clearly readable → "high"
+  - Readable but uncertain / partially legible → "low"
+  - Cannot read at all → "unreadable"
+- NEVER use any other value such as "medium", "none", "uncertain", or similar.
+  The only valid confidence values are exactly: "high", "low", "unreadable".
 
 ════════════════════════════════════════
 OUTPUT

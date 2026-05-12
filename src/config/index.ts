@@ -7,7 +7,7 @@ export const GEMINI_MODELS = {
   'gemini-2.5-pro':           'Gemini 2.5 Pro (stable, best accuracy)',
   'gemini-3.1-pro-preview':   'Gemini 3.1 Pro Preview (latest, cutting-edge)',
   // Speed / cost tradeoff
-  'gemini-2.5-flash':         'Gemini 2.5 Flash (fast, lower cost)',
+  'gemini-3.1-flash-lite':    'Gemini 3.1 Flash Lite (fast, lightweight)',
   'gemini-3-flash-preview':   'Gemini 3 Flash Preview (fast, latest)',
 } as const;
 
