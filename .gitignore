@@ -1,0 +1,35 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Build output ──────────────────────────────────────────────────────────────
+dist/
+dist-scripts/
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+service-account.json
+*-service-account.json
+*.key.json
+
+# ── Credentials / references ──────────────────────────────────────────────────
+refs/
+
+# ── Generated outputs ─────────────────────────────────────────────────────────
+outputs/
+
+# ── NID images (PII — never commit real ID card photos) ──────────────────────
+nid_images/
+
+# ── OS / editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
