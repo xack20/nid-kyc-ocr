@@ -26,7 +26,7 @@ const args = minimist(process.argv.slice(2), {
 const IMAGE_DIR  = args['dir'] as string;
 const mode       = args['mode'] as ExtractionMode;
 const RUN_TS     = ts();
-const OUTPUT_DIR = `./outputs/batch_${RUN_TS}`;
+const OUTPUT_DIR = `./outputs/batch_${mode}_${RUN_TS}`;
 
 if (!EXTRACTION_MODES.includes(mode)) {
   console.error(`Invalid mode "${mode}". Allowed: ${EXTRACTION_MODES.join(', ')}`);

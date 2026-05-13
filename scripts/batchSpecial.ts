@@ -28,7 +28,7 @@ const args = minimist(process.argv.slice(2), {
 const SPECIAL_DIR = args['dir'] as string;
 const mode        = args['mode'] as ExtractionMode;
 const RUN_TS      = ts();
-const OUTPUT_DIR  = `./outputs/special_${RUN_TS}`;
+const OUTPUT_DIR  = `./outputs/special_${mode}_${RUN_TS}`;
 
 if (!EXTRACTION_MODES.includes(mode)) {
   console.error(`Invalid mode "${mode}". Allowed: ${EXTRACTION_MODES.join(', ')}`);
@@ -105,6 +105,11 @@ async function main() {
         if (extraction.fieldsNeedingReview.length > 0) {
           console.log(`  Review: ${extraction.fieldsNeedingReview.join(', ')}`);
         }
+      } else {
+        // vision_only — show raw OCR text per side
+        for (const vo of result.visionOutputs) {
+          console.log(`  [${vo.side}] ${vo.rawText.trim().replace(/\n/g, ' | ').slice(0, 180) || '(nothing detected)'}`);
+        }
       }
 
       await writeFile(outFile, JSON.stringify({ pairId, extractionMode: mode, frontImage: frontInfo.path, backImage: backInfo?.path ?? null, ...result }, null, 2), 'utf-8');
@@ -120,7 +125,11 @@ async function main() {
           motherNameBn: e.motherNameBn.value, addressBn: e.addressBn.value,
           bloodGroup: e.bloodGroup.value, issueDate: e.issueDate.value,
           fieldsNeedingReview: e.fieldsNeedingReview,
-        } : {}),
+        } : {
+          // vision_only — include raw OCR text in summary
+          visionFront: result.visionOutputs.find(v => v.side === 'front')?.rawText ?? '',
+          visionBack:  result.visionOutputs.find(v => v.side === 'back')?.rawText  ?? '',
+        }),
       });
 
     } catch (err) {
