@@ -6,6 +6,7 @@ import type { TimingSummary } from './timer.js';
 export const EXTRACTION_MODES = [
   'gemini_only',
   'vision_only',
+  'vision_to_gemini',        // CV text → Gemini text-only (no image sent to Gemini)
   'vision_fed_gemini',
   'gemini_with_vision_tool',
   'combined',

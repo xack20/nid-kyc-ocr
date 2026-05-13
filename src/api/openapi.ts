@@ -60,8 +60,9 @@ export const openApiSpec = {
                     default:     'combined',
                     description: [
                       '`gemini_only` — Gemini reads the image directly, no Cloud Vision.',
-                      '`vision_only` — Cloud Vision OCR only, returns raw text.',
-                      '`vision_fed_gemini` — Cloud Vision runs first; its text is passed to Gemini as context.',
+                      '`vision_only` — Cloud Vision OCR only, returns raw text, no Gemini.',
+                      '`vision_to_gemini` — Cloud Vision extracts text; that text only (no image) is sent to Gemini for structured labeling. Zero image tokens charged to Gemini.',
+                      '`vision_fed_gemini` — Cloud Vision runs first; image + CV text both passed to Gemini as context.',
                       '`gemini_with_vision_tool` — Cloud Vision registered as a Gemini function tool; Gemini decides when to call it.',
                       '`combined` — Cloud Vision always runs AND is also a callable tool. Maximum accuracy.',
                     ].join('\n\n'),

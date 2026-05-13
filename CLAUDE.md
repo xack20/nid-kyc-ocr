@@ -69,7 +69,8 @@ scripts/                      # CLI runners (tsx, not compiled)
 |---|---|---|---|
 | `gemini_only` | No | Direct | Fast, no CV quota |
 | `vision_only` | Yes | No | Debug OCR quality |
-| `vision_fed_gemini` | Yes (pre-call) | Context only | No function-call quota |
+| `vision_to_gemini` | Yes (text only) | Text prompt only | Zero Gemini image tokens |
+| `vision_fed_gemini` | Yes (pre-call) | Image + text context | No function-call quota |
 | `gemini_with_vision_tool` | On-demand | Tool loop | Gemini decides when to OCR |
 | `combined` | Always + tool | Full loop | Maximum accuracy (default) |
 
