@@ -1,5 +1,5 @@
 import { type Interactions } from '@google/genai';
-import { geminiClient, getResponseText, accumulateUsage, generationConfig } from '../providers/gemini.js';
+import { geminiClient, getResponseText, accumulateUsage, generationConfig, uploadToFilesApi, deleteFromFilesApi } from '../providers/gemini.js';
 import { GEMINI_ONLY_PROMPT as SYSTEM_INSTRUCTION } from '../prompts/geminiOnly.js';
 import { NidResultSchema } from '../core/models.js';
 import { StepTimer } from '../core/timer.js';
@@ -20,22 +20,25 @@ export class GeminiOnlyStrategy implements IExtractionStrategy {
   async extract(images: NidImage[]): Promise<ExtractionResult> {
     const timer = new StepTimer();
 
+    // Upload images once to Files API — referenced by URI, not re-sent as base64
+    const stopUpload = timer.start('files_upload');
+    const fileUris = await Promise.all(
+      images.map(img => uploadToFilesApi(img.buffer, img.mimeType)),
+    );
+    stopUpload();
+
     const inputParts: Interactions.Content[] = [
       {
         type: 'text',
         text: 'Extract all NID fields from the image(s) below.',
       } satisfies Interactions.TextContent,
-      ...images.map(
-        (img): Interactions.ImageContent => ({
-          type:      'image',
-          data:      img.buffer.toString('base64'),
-          mime_type: toImageMimeType(img.mimeType),
-        }),
+      ...fileUris.map(
+        (uri): Interactions.ImageContent => ({ type: 'image', uri }),
       ),
     ];
 
     const stopGemini = timer.start('gemini_initial');
-    let interaction = await geminiClient().interactions.create({
+    const interaction = await geminiClient().interactions.create({
       model:              config.gemini.model,
       system_instruction: SYSTEM_INSTRUCTION,
       generation_config:  generationConfig,
@@ -45,6 +48,9 @@ export class GeminiOnlyStrategy implements IExtractionStrategy {
 
     const rawText    = getResponseText(interaction);
     const extraction = NidResultSchema.parse(normalizeNidJson(extractJson(rawText)));
+
+    // Cleanup uploaded files (non-blocking)
+    void Promise.all(fileUris.map(deleteFromFilesApi));
 
     return {
       mode:            this.mode,

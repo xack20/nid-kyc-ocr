@@ -1,6 +1,6 @@
 import { type Interactions } from '@google/genai';
 import { extractWithCloudVision } from '../providers/vision.js';
-import { geminiClient, getResponseText, accumulateUsage, generationConfig } from '../providers/gemini.js';
+import { geminiClient, getResponseText, accumulateUsage, generationConfig, uploadToFilesApi, deleteFromFilesApi } from '../providers/gemini.js';
 import { VISION_FED_GEMINI_PROMPT as SYSTEM_INSTRUCTION } from '../prompts/visionFedGemini.js';
 import { NidResultSchema } from '../core/models.js';
 import { StepTimer } from '../core/timer.js';
@@ -39,7 +39,13 @@ export class VisionFedGeminiStrategy implements IExtractionStrategy {
       visionOutputs.push({ side: img.side, rawText, timingMs: ms });
     }
 
-    // Step 2: Build Gemini input — CV context + images
+    // Step 2: Upload images once to Files API
+    const stopUpload = timer.start('files_upload');
+    const fileUris = await Promise.all(
+      visionResults.map(({ img }) => uploadToFilesApi(img.buffer, img.mimeType)),
+    );
+    stopUpload();
+
     const cvContext = visionResults
       .map(({ img, rawText }) =>
         `Cloud Vision — ${img.side.toUpperCase()}:\n---\n${rawText || '(no text detected)'}\n---`,
@@ -51,13 +57,7 @@ export class VisionFedGeminiStrategy implements IExtractionStrategy {
         type: 'text',
         text: `${cvContext}\n\nNow examine the image(s) below, extract all fields, and cross-verify with the Cloud Vision text above.`,
       } satisfies Interactions.TextContent,
-      ...visionResults.map(
-        ({ img }): Interactions.ImageContent => ({
-          type:      'image',
-          data:      img.buffer.toString('base64'),
-          mime_type: toImageMimeType(img.mimeType),
-        }),
-      ),
+      ...fileUris.map((uri): Interactions.ImageContent => ({ type: 'image', uri })),
     ];
 
     // Step 3: Gemini — single call, no tool
@@ -69,6 +69,8 @@ export class VisionFedGeminiStrategy implements IExtractionStrategy {
       input:              inputParts,
     });
     stop();
+
+    void Promise.all(fileUris.map(deleteFromFilesApi));
 
     const extraction = NidResultSchema.parse(normalizeNidJson(extractJson(getResponseText(interaction))));
 

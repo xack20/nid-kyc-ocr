@@ -1,6 +1,6 @@
 import { type Interactions } from '@google/genai';
 import { extractWithCloudVision } from '../providers/vision.js';
-import { geminiClient, getResponseText, getFunctionCallStep, accumulateUsage, generationConfigTool } from '../providers/gemini.js';
+import { geminiClient, getResponseText, getFunctionCallStep, accumulateUsage, generationConfigTool, uploadToFilesApi, deleteFromFilesApi } from '../providers/gemini.js';
 import { NID_JSON_SCHEMA } from '../utils/nidSchema.js';
 import { GEMINI_WITH_VISION_TOOL_PROMPT as SYSTEM_INSTRUCTION } from '../prompts/geminiWithVisionTool.js';
 import { NidResultSchema } from '../core/models.js';
@@ -39,18 +39,19 @@ export class GeminiWithVisionToolStrategy implements IExtractionStrategy {
       return rawText;
     };
 
+    // Upload images once to Files API
+    const stopUpload = timer.start('files_upload');
+    const fileUris = await Promise.all(
+      images.map(img => uploadToFilesApi(img.buffer, img.mimeType)),
+    );
+    stopUpload();
+
     const inputParts: Interactions.Content[] = [
       {
         type: 'text',
-        text:  'Extract all NID fields from the image(s). Use the get_cloud_vision_ocr tool if you need precise OCR verification.',
+        text: 'Extract all NID fields from the image(s). Use the get_cloud_vision_ocr tool if you need precise OCR verification.',
       } satisfies Interactions.TextContent,
-      ...images.map(
-        (img): Interactions.ImageContent => ({
-          type:      'image',
-          data:      img.buffer.toString('base64'),
-          mime_type: toImageMimeType(img.mimeType),
-        }),
-      ),
+      ...fileUris.map((uri): Interactions.ImageContent => ({ type: 'image', uri })),
     ];
 
     const stopInitial = timer.start('gemini_initial');
@@ -111,6 +112,8 @@ export class GeminiWithVisionToolStrategy implements IExtractionStrategy {
     }
 
     const extraction = NidResultSchema.parse(normalizeNidJson(extractJson(getResponseText(interaction))));
+
+    void Promise.all(fileUris.map(deleteFromFilesApi));
 
     return {
       mode:            this.mode,

@@ -3,22 +3,27 @@ import { config } from '../config/index.js';
 
 /**
  * Generation config for non-tool strategies (gemini_only, vision_fed_gemini, vision_to_gemini).
- * thinking_summaries:'auto' is safe here — the model produces a single response with no
- * function-call loop to disrupt.
+ * - temperature:0  → deterministic OCR output, eliminates run-to-run variance
+ * - seed:42        → reproducible results for debugging
+ * - thinking_summaries:'auto' is safe — single-response, no function-call loop
  */
 export const generationConfig: Interactions.GenerationConfig = {
   thinking_level:     config.gemini.thinkingLevel,
   thinking_summaries: 'auto',
+  temperature:        0,
+  seed:               42,
 };
 
 /**
  * Generation config for tool-based strategies (gemini_with_vision_tool, combined).
- * thinking_summaries must be 'none' here — when 'auto' is set in a function-call loop,
- * the model mixes its thinking stream with the final output, breaking JSON compliance.
+ * - thinking_summaries:'none' — prevents thought stream mixing with function-call output
+ * - temperature:0 + seed:42  — same determinism benefit
  */
 export const generationConfigTool: Interactions.GenerationConfig = {
   thinking_level:     config.gemini.thinkingLevel,
   thinking_summaries: 'none',
+  temperature:        0,
+  seed:               42,
 };
 
 // ─── Singleton client ─────────────────────────────────────────────────────────
@@ -68,6 +73,41 @@ export function getFunctionCallStep(
   return interaction.steps?.find(
     (s): s is Interactions.FunctionCallStep => s.type === 'function_call',
   );
+}
+
+// ─── Files API ───────────────────────────────────────────────────────────────
+
+/**
+ * Uploads an image buffer to the Gemini Files API and returns the file URI.
+ *
+ * Benefits vs inline base64:
+ *   - Image is transmitted once; all subsequent Interactions calls reference it by URI
+ *   - No re-encoding overhead on each API call
+ *   - Files are free to store and auto-delete after 48 h
+ *
+ * @returns The file URI (e.g. "https://generativelanguage.googleapis.com/v1beta/files/abc123")
+ */
+export async function uploadToFilesApi(buffer: Buffer, mimeType: string): Promise<string> {
+  const blob = new Blob([buffer as unknown as ArrayBuffer], { type: mimeType });
+  const file = await geminiClient().files.upload({
+    file:   blob,
+    config: { mimeType },
+  });
+  if (!file.uri) throw new Error('Gemini Files API returned no URI');
+  return file.uri;
+}
+
+/**
+ * Deletes an uploaded file from the Files API.
+ * Files auto-delete after 48 h — call this for immediate cleanup in high-volume flows.
+ */
+export async function deleteFromFilesApi(fileUri: string): Promise<void> {
+  try {
+    const name = fileUri.split('/files/')[1];
+    if (name) await geminiClient().files.delete({ name: `files/${name}` });
+  } catch {
+    // Non-critical — file will auto-expire
+  }
 }
 
 /** Accumulates token usage across multiple Interaction responses. */

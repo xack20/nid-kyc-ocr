@@ -1,6 +1,6 @@
 import { type Interactions } from '@google/genai';
 import { extractWithCloudVision } from '../providers/vision.js';
-import { geminiClient, getResponseText, getFunctionCallStep, accumulateUsage, generationConfigTool } from '../providers/gemini.js';
+import { geminiClient, getResponseText, getFunctionCallStep, accumulateUsage, generationConfigTool, uploadToFilesApi, deleteFromFilesApi } from '../providers/gemini.js';
 import { NID_JSON_SCHEMA } from '../utils/nidSchema.js';
 import { COMBINED_PROMPT as SYSTEM_INSTRUCTION } from '../prompts/combined.js';
 import { NidResultSchema } from '../core/models.js';
@@ -46,7 +46,13 @@ export class CombinedStrategy implements IExtractionStrategy {
     // Cache for function-call re-runs (avoids duplicate API calls)
     const visionCache = new Map(visionResults.map(({ img, rawText }) => [img.side, rawText]));
 
-    // Step 2: Build Gemini input — CV context + images + tool
+    // Step 2: Upload images once to Files API — referenced by URI across all calls
+    const stopUpload = timer.start('files_upload');
+    const fileUris = await Promise.all(
+      visionResults.map(({ img }) => uploadToFilesApi(img.buffer, img.mimeType)),
+    );
+    stopUpload();
+
     const cvContext = visionResults
       .map(({ img, rawText }) =>
         `Cloud Vision — ${img.side.toUpperCase()}:\n---\n${rawText || '(no text detected)'}\n---`,
@@ -58,13 +64,7 @@ export class CombinedStrategy implements IExtractionStrategy {
         type: 'text',
         text: `${cvContext}\n\nNow examine the image(s) below, extract all fields, and cross-verify with the Cloud Vision text above.`,
       } satisfies Interactions.TextContent,
-      ...visionResults.map(
-        ({ img }): Interactions.ImageContent => ({
-          type:      'image',
-          data:      img.buffer.toString('base64'),
-          mime_type: toImageMimeType(img.mimeType),
-        }),
-      ),
+      ...fileUris.map((uri): Interactions.ImageContent => ({ type: 'image', uri })),
     ];
 
     const stopInitial = timer.start('gemini_initial');
@@ -126,6 +126,8 @@ export class CombinedStrategy implements IExtractionStrategy {
     }
 
     const extraction = NidResultSchema.parse(normalizeNidJson(extractJson(getResponseText(interaction))));
+
+    void Promise.all(fileUris.map(deleteFromFilesApi));
 
     return {
       mode:            this.mode,
