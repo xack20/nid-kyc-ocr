@@ -108,9 +108,36 @@ Prefer the linguistically valid Bengali word over the raw OCR sequence.
     OCR sometimes outputs it in the wrong order or drops it entirely.
   ু / ূ (u / uu matra) confusion — treat "পরবার" → "পরিবার" if context fits.
   া (aa-matra) dropped at word end — "সরকার" may appear as "সরকা".
-  Chandrabindu ঁ  often dropped or confused with Anusvara ং.
 
-── F. Common Character Confusions ──────────────────────────────
+── F. Chandrabindu (ঁ) — nasalisation mark ─────────────────────
+Chandrabindu (ঁ U+0981) sits ABOVE the vowel and nasalises it.
+OCR fails with it in three ways — you must restore it in all cases:
+
+  1. Dropped entirely:
+       "পাচাইখা"  → "পাঁচাইখা"   (পাঁচ = five, very common in NID addresses)
+       "গাও"      → "গাঁও"        (village suffix in rural addresses)
+       "বাশ"      → "বাঁশ"        (bamboo — village/area names)
+       "আখি"      → "আঁখি"        (female name)
+       "চাদ"      → "চাঁদ"        (moon — male/female name)
+       "মা"       → "মাঁ"         (if nasalised context)
+
+  2. Confused with Anusvara ং (a completely different character):
+       "পাংচাইখা" → "পাঁচাইখা"
+       "গাংও"     → "গাঁও"
+       The Anusvara ং is a standalone nasal consonant ("ng" sound).
+       If ং appears before a vowel-initial syllable in a word, it is
+       almost certainly a misread Chandrabindu ঁ — restore it.
+
+  3. Confused with Anusvar dot only (ঁ rendered as just a dot above):
+       OCR may output it as a stray period or ignore it entirely.
+
+  Chandrabindu most commonly appears in NID text on:
+    — Address words: পাঁচ, গাঁও, বাঁশ, ঝাঁপ, কাঁদি, সাঁড়া
+    — Personal names:  আঁখি, চাঁদ, রাঁধা, হাঁস (less common)
+  When a Bengali word looks phonetically incomplete without nasalisation,
+  check whether Chandrabindu was silently dropped.
+
+── G. Common Character Confusions ──────────────────────────────
   ণ ↔ ন   (both "na" sounds — context determines which is correct)
   শ ↔ ষ ↔ স  (three sibilants — use word knowledge to choose)
   ড ↔ ড়   (without vs with nukta — "ডাকঘর" uses ড, "বাড়ি" uses ড়)
@@ -120,7 +147,7 @@ Prefer the linguistically valid Bengali word over the raw OCR sequence.
   হ ↔ ব   (visually similar when degraded — e.g. "জাহেদুর" misread as "জাবেদুর")
   ০ (Bengali zero) ↔ ও (the letter "o") — especially in NID numbers
 
-── G. Word Boundary Errors ─────────────────────────────────────
+── H. Word Boundary Errors ─────────────────────────────────────
 OCR inserts spurious spaces at conjunct points or matra positions.
 Merge tokens that form a single valid Bengali word:
   "নমু না"    → "নমুনা"
@@ -131,19 +158,19 @@ Merge tokens that form a single valid Bengali word:
   "কর্পো রেশন" → "কর্পোরেশন"
   "ব্য বহার"  → "ব্যবহার"
 
-── H. Abbreviation Normalisation ───────────────────────────────
+── I. Abbreviation Normalisation ───────────────────────────────
   Visarga ঃ is often misread as colon ":" or period "।"
     "মো:" or "মো।"   → "মোঃ"   (male name prefix — মোহাম্মদ)
     "মোছা:" or "মোসা:" → "মোছাঃ" or "মোসাঃ"  (female name prefix — মোসাম্মৎ)
     "মৃ:" or "মৃত:"  → "মৃতঃ"  (deceased — appears in some older NIDs)
 
-── I. Bangla vs Latin Digit Mixing ─────────────────────────────
+── J. Bangla vs Latin Digit Mixing ─────────────────────────────
   Bangla: ০১২৩৪৫৬৭৮৯   Latin: 0123456789
   OCR may mix both in the same number.
   For nidNumber: output digits as-is (do not convert between scripts).
   For dates and addresses: normalise to whichever script appears more consistently.
 
-── J. NID-Specific Vocabulary Reference ────────────────────────
+── K. NID-Specific Vocabulary Reference ────────────────────────
   These words appear on virtually every NID card — use them to anchor corrections:
   গণপ্রজাতন্ত্রী  বাংলাদেশ  সরকার  জাতীয়  পরিচয়পত্র
   নাম  পিতা  মাতা  ঠিকানা  রক্তের  গ্রুপ  প্রদানের  তারিখ

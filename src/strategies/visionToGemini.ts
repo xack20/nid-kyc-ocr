@@ -99,9 +99,33 @@ assume a conjunct and restore the hasanta.
     OCR may output it in wrong order or drop it.
   া (aa-matra) dropped at word end: "সরকার" → "সরকা" — restore "সরকার"
   ু / ূ confusion (short vs long u matra)
-  ং (Anusvara) vs ঁ (Chandrabindu) — context determines which
 
-── G. Common character confusions ───────────────────────────────
+── G. Chandrabindu (ঁ) — nasalisation mark ─────────────────────
+Chandrabindu (ঁ U+0981) nasalises the vowel it sits above.
+Because it is a small diacritic above the line, OCR drops or garbles it
+in three specific ways — you MUST restore it:
+
+  1. Dropped entirely — the word looks like its non-nasalised form:
+       "পাচাইখা"  → "পাঁচাইখা"   ← extremely common in NID addresses
+       "গাও"      → "গাঁও"        (village suffix)
+       "বাশ"      → "বাঁশ"        (bamboo — place names)
+       "চাদ"      → "চাঁদ"        (personal name)
+       "আখি"      → "আঁখি"        (female name)
+
+  2. Misread as Anusvara ং (a completely different character):
+       "পাংচাইখা" → "পাঁচাইখা"
+       "গাংও"     → "গাঁও"
+       Rule: if ং appears immediately before a vowel-initial syllable
+       inside a word (not at word-end), it is almost always a misread ঁ.
+
+  3. Rendered as a stray period or apostrophe above the letter — ignore
+     the stray mark and restore ঁ based on the correct Bengali word.
+
+  Common NID address words containing Chandrabindu:
+    পাঁচ (five)  গাঁও (village)  বাঁশ (bamboo)  সাঁড়া  ঝাঁপ  কাঁদি
+  Common names:  চাঁদ  আঁখি  রাঁধা
+
+── H. Common character confusions ───────────────────────────────
   ণ ↔ ন    (both "na" sounds)
   শ ↔ ষ ↔ স  (three sibilants — use word knowledge)
   ড ↔ ড়   ("ডাকঘর" = ড,  "বাড়ি" = ড়)
@@ -111,7 +135,7 @@ assume a conjunct and restore the hasanta.
   র ↔ ব    (visually similar in some fonts)
   ০ (Bengali digit zero) ↔ ও (the letter "o")
 
-── H. Spurious word-boundary spaces ────────────────────────────
+── I. Spurious word-boundary spaces ────────────────────────────
 Merge tokens that form a single valid Bengali word:
   "নমু না"     → "নমুনা"
   "তাল তৈল"   → "নমুনা সড়ক"
@@ -121,13 +145,13 @@ Merge tokens that form a single valid Bengali word:
   "কর্পো রেশন" → "কর্পোরেশন"
   "উত তরা"    → "উত্তরা"
 
-── I. Abbreviation normalisation ────────────────────────────────
+── J. Abbreviation normalisation ────────────────────────────────
 Visarga ঃ is misread as ":" (colon) or "।":
   "মো:"  or "মো।"   → "মোঃ"    (male name prefix)
   "মোছা:" or "মোসা:" → "মোছাঃ" or "মোসাঃ"  (female prefix)
   "মৃত:"             → "মৃতঃ"   (deceased prefix, older NIDs)
 
-── J. Confidence after reconstruction ────────────────────────────
+── K. Confidence after reconstruction ────────────────────────────
   Reconstructed cleanly, linguistically valid → "high"
   Reconstruction was uncertain or ambiguous   → "low"
   Field not found in OCR text                 → "unreadable"
