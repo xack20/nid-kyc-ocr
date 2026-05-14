@@ -1,6 +1,6 @@
 import { type Interactions } from '@google/genai';
 import { extractWithCloudVision } from '../providers/vision.js';
-import { geminiClient, getResponseText, getFunctionCallStep, accumulateUsage } from '../providers/gemini.js';
+import { geminiClient, getResponseText, getFunctionCallStep, accumulateUsage, generationConfig } from '../providers/gemini.js';
 import { SYSTEM_INSTRUCTION } from '../prompts/system.js';
 import { NidResultSchema } from '../core/models.js';
 import { StepTimer } from '../core/timer.js';
@@ -70,6 +70,7 @@ export class CombinedStrategy implements IExtractionStrategy {
     let interaction = await geminiClient().interactions.create({
       model:              config.gemini.model,
       system_instruction: SYSTEM_INSTRUCTION,
+      generation_config:  generationConfig,
       input:              inputParts,
       tools: [
         {

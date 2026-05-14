@@ -26,10 +26,13 @@ function resolveModel(): GeminiModel {
   return DEFAULT_MODEL;
 }
 
+export type ThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
+
 export const config = {
   gemini: {
-    apiKey: process.env.GEMINI_API_KEY ?? '',
-    model:  resolveModel(),
+    apiKey:        process.env.GEMINI_API_KEY ?? '',
+    model:         resolveModel(),
+    thinkingLevel: (process.env.GEMINI_THINKING_LEVEL ?? 'high') as ThinkingLevel,
   },
   google: {
     credentials: process.env.GOOGLE_APPLICATION_CREDENTIALS,

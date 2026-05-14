@@ -1,6 +1,12 @@
 import { GoogleGenAI, type Interactions } from '@google/genai';
 import { config } from '../config/index.js';
 
+/** Generation config applied to every Interactions API call. */
+export const generationConfig: Interactions.GenerationConfig = {
+  thinking_level:    config.gemini.thinkingLevel,
+  thinking_summaries: 'auto',
+};
+
 // ─── Singleton client ─────────────────────────────────────────────────────────
 
 let _client: GoogleGenAI | null = null;
