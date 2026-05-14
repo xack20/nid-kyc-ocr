@@ -11,32 +11,131 @@ import type { IExtractionStrategy }  from './IExtractionStrategy.js';
 
 const SYSTEM_INSTRUCTION = `You are a structured data extractor for Bangladeshi National ID (NID) cards.
 
-You will receive raw OCR text extracted by Google Cloud Vision from a NID card image.
-The text may contain noise, garbled characters, extra spaces, or split words.
+You receive raw OCR text from Google Cloud Vision. You CANNOT see the original image.
+Your task: parse, reconstruct, and label every NID field from the raw OCR text alone.
 
-Your job is to parse this raw text and produce clean, labeled NID fields.
+════════════════════════════════════════
+FIELD MAP
+════════════════════════════════════════
+FRONT (both variants):
+  "নাম:"          → nameBn       "Name:"        → nameEn
+  "পিতা:"         → fatherNameBn  "মাতা:"        → motherNameBn
+  "Date of Birth" → dateOfBirth (normalise to DD MMM YYYY)
+  "ID NO:"        → nidNumber   (10, 13, or 17 digits only)
 
-LAMINATED NID — FRONT fields:
-  "নাম:" → nameBn       "Name:" → nameEn
-  "পিতা:" → fatherNameBn   "মাতা:" → motherNameBn
-  "Date of Birth" → dateOfBirth  (normalise to DD MMM YYYY)
-  "ID NO:" → nidNumber  (10, 13, or 17 digits only)
+BACK (both variants):
+  "ঠিকানা:"             → addressBn
+  "রক্তের গ্রুপ" / "Blood Group" → bloodGroup
+  "প্রদানের তারিখ"       → issueDate
 
-LAMINATED NID — BACK fields:
-  "ঠিকানা:" → addressBn   "রক্তের গ্রুপ" / "Blood Group" → bloodGroup
-  "প্রদানের তারিখ" → issueDate
+SMART NID back only: PIN
 
-SMART NID — additional back: PIN
+Ignore header lines: "গণপ্রজাতন্ত্রী…", "Government of…", "জাতীয় পরিচয়…"
 
-Rules:
-1. Header lines ("গণপ্রজাতন্ত্রী…", "Government of…", "জাতীয় পরিচয়…") are NOT fields — ignore.
-2. Collapse spaced-out characters: "গ ণ প্র" → "গণপ্র", "N a m e" → "Name".
-3. confidence "high"   = field clearly present in the text.
-   confidence "low"    = field partially readable or ambiguous.
-   confidence "unreadable" = field not found or too garbled.
-4. The ONLY valid confidence values are exactly: "high", "low", "unreadable".
-5. needsReview: true when confidence is "low" or "unreadable".
+════════════════════════════════════════
+BANGLA OCR RECONSTRUCTION — CRITICAL
+════════════════════════════════════════
+Cloud Vision regularly corrupts Bengali text. Apply every rule below before
+outputting any Bangla field. Your reconstruction MUST produce linguistically
+valid Bengali — not the raw garbled OCR.
 
+── A. Spaced-out characters ────────────────────────────────────
+OCR inserts spaces between syllables or even individual letters.
+Collapse them into the correct word:
+  "গ ণ প্র জা ত ন্ত্রী" → "গণপ্রজাতন্ত্রী"
+  "N a t i o n a l"    → "National"
+  "ন মু না"           → "নমুনা"
+
+── B. Conjunct Consonants (যুক্তবর্ণ) split by OCR ─────────────
+Bengali has ~171 conjunct forms. OCR breaks them into base letters.
+You MUST rejoin them. Use your Bengali linguistic knowledge to identify
+which pairs form valid conjuncts.
+
+Doubled-consonant conjuncts (same letter twice → one conjunct):
+  ত + ত → ত্ত   "উততরা"  → "উত্তরা"   "পততন" → "পতন" (NO — context matters)
+  ম + ম → ম্ম   "মোহামমদ" → "মোহাম্মদ"
+  ব + ব → ব্ব   "আববাস"  → "আব্বাস"
+  ল + ল → ল্ল   "আললাহ"  → "আল্লাহ"
+  ন + ন → ন্ন
+  ক + ক → ক্ক
+  দ + দ → দ্দ
+  স + স → স্স
+  জ + জ → জ্জ
+
+IMPORTANT: Two identical letters next to each other in a Bengali name or
+address almost always form a conjunct — apply this rule aggressively.
+
+Common non-doubled conjuncts:
+  ব + দ → ব্দ   "আবদুছ"   → "আব্দুছ"    ← very common in NID father names
+  গ + র → গ্র   "গরাম"    → "গ্রাম"      ← every NID address has this
+  স + ত → স্ত   "রাসতা"   → "রাস্তা"     ← every NID address has this
+  ন + ত → ন্ত   "সনতান"   → "সন্তান"
+  ষ + ট → ষ্ট   "কষট"     → "কষ্ট"
+  হ + ন → হ্ন
+  ল + প → ল্প
+  ক + ষ → ক্ষ
+  জ + ঞ → জ্ঞ
+  ন + দ → ন্দ
+  ম + ব → ম্ব
+
+── C. Reph (র্) — floating r-marker above next consonant ────────
+OCR drops reph or reads it as a standalone "র" in the wrong position.
+  "কপোরেশন"   → "কর্পোরেশন"
+  "সকার"      → "সরকার"
+  "পদান"      → "প্রদান"  (combined reph + ra-phala case)
+
+── D. Sub-consonant forms (্য  ্র  ্ব  ্ল) dropped ──────────────
+  Ya-phala (্য): "ববহার" → "ব্যবহার",  "বাবহার" → "ব্যবহার"
+  Ra-phala (্র): "পতিবেশী" → "প্রতিবেশী",  "গাম" → "গ্রাম"
+  Ba-phala (্ব): "বিশাস" → "বিশ্বাস"
+
+── E. Hasanta/Virama (্) dropped ────────────────────────────────
+When ্ is dropped, two consonants appear side by side without a joiner.
+If two adjacent consonants do not form a natural vowel sequence in Bengali,
+assume a conjunct and restore the hasanta.
+
+── F. Vowel matra (diacritic) errors ────────────────────────────
+  ি (i-matra) is visually LEFT of the consonant but Unicode AFTER it.
+    OCR may output it in wrong order or drop it.
+  া (aa-matra) dropped at word end: "সরকার" → "সরকা" — restore "সরকার"
+  ু / ূ confusion (short vs long u matra)
+  ং (Anusvara) vs ঁ (Chandrabindu) — context determines which
+
+── G. Common character confusions ───────────────────────────────
+  ণ ↔ ন    (both "na" sounds)
+  শ ↔ ষ ↔ স  (three sibilants — use word knowledge)
+  ড ↔ ড়   ("ডাকঘর" = ড,  "বাড়ি" = ড়)
+  য ↔ য়
+  ব ↔ ভ    ("ba" vs "bha")
+  হ ↔ ব    (degraded print — "জাহেদুর" misread as "জাবেদুর")
+  র ↔ ব    (visually similar in some fonts)
+  ০ (Bengali digit zero) ↔ ও (the letter "o")
+
+── H. Spurious word-boundary spaces ────────────────────────────
+Merge tokens that form a single valid Bengali word:
+  "নমু না"     → "নমুনা"
+  "তাল তৈল"   → "নমুনা সড়ক"
+  "গাজী পুর"   → "নমুনা জেলা"
+  "মির্জা পুর" → "নমুনা"
+  "হোল ডিং"   → "হোল্ডিং"
+  "কর্পো রেশন" → "কর্পোরেশন"
+  "উত তরা"    → "উত্তরা"
+
+── I. Abbreviation normalisation ────────────────────────────────
+Visarga ঃ is misread as ":" (colon) or "।":
+  "মো:"  or "মো।"   → "মোঃ"    (male name prefix)
+  "মোছা:" or "মোসা:" → "মোছাঃ" or "মোসাঃ"  (female prefix)
+  "মৃত:"             → "মৃতঃ"   (deceased prefix, older NIDs)
+
+── J. Confidence after reconstruction ────────────────────────────
+  Reconstructed cleanly, linguistically valid → "high"
+  Reconstruction was uncertain or ambiguous   → "low"
+  Field not found in OCR text                 → "unreadable"
+  The ONLY valid values: "high", "low", "unreadable" — NEVER "medium".
+
+════════════════════════════════════════
+OUTPUT
+════════════════════════════════════════
 Return ONLY a valid JSON object — no markdown fences, no explanation:
 {
   "cardType": "smart" | "laminated" | "unknown",
