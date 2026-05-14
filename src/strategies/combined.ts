@@ -1,6 +1,7 @@
 import { type Interactions } from '@google/genai';
 import { extractWithCloudVision } from '../providers/vision.js';
-import { geminiClient, getResponseText, getFunctionCallStep, accumulateUsage, generationConfig } from '../providers/gemini.js';
+import { geminiClient, getResponseText, getFunctionCallStep, accumulateUsage, generationConfigTool } from '../providers/gemini.js';
+import { NID_JSON_SCHEMA } from '../utils/nidSchema.js';
 import { SYSTEM_INSTRUCTION } from '../prompts/system.js';
 import { NidResultSchema } from '../core/models.js';
 import { StepTimer } from '../core/timer.js';
@@ -70,7 +71,9 @@ export class CombinedStrategy implements IExtractionStrategy {
     let interaction = await geminiClient().interactions.create({
       model:              config.gemini.model,
       system_instruction: SYSTEM_INSTRUCTION,
-      generation_config:  generationConfig,
+      generation_config:  generationConfigTool,
+      // Note: response_format cannot be combined with tools — JSON is enforced
+      // in the continuation call after the tool result is provided.
       input:              inputParts,
       tools: [
         {
@@ -105,6 +108,8 @@ export class CombinedStrategy implements IExtractionStrategy {
       const stopContinuation = timer.start(`gemini_continuation_${geminiCallCount}`);
       interaction = await geminiClient().interactions.create({
         model:                   config.gemini.model,
+        generation_config:       generationConfigTool,
+        response_format:         { type: 'text', mime_type: 'application/json', schema: NID_JSON_SCHEMA } satisfies Interactions.TextResponseFormat,
         previous_interaction_id: interaction.id,
         input: [
           {
