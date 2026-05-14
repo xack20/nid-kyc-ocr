@@ -1,6 +1,6 @@
 import { type Interactions } from '@google/genai';
 import { geminiClient, getResponseText, accumulateUsage, generationConfig } from '../providers/gemini.js';
-import { SYSTEM_INSTRUCTION } from '../prompts/system.js';
+import { GEMINI_ONLY_PROMPT as SYSTEM_INSTRUCTION } from '../prompts/geminiOnly.js';
 import { NidResultSchema } from '../core/models.js';
 import { StepTimer } from '../core/timer.js';
 import { toImageMimeType } from '../utils/mime.js';

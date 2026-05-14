@@ -1,7 +1,7 @@
 import { type Interactions } from '@google/genai';
 import { extractWithCloudVision } from '../providers/vision.js';
 import { geminiClient, getResponseText, accumulateUsage, generationConfig } from '../providers/gemini.js';
-import { SYSTEM_INSTRUCTION } from '../prompts/system.js';
+import { VISION_FED_GEMINI_PROMPT as SYSTEM_INSTRUCTION } from '../prompts/visionFedGemini.js';
 import { NidResultSchema } from '../core/models.js';
 import { StepTimer } from '../core/timer.js';
 import { toImageMimeType } from '../utils/mime.js';

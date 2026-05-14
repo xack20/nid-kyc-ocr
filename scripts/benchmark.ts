@@ -7,7 +7,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises';
 import { extname, basename, join }    from 'path';
 import minimist                        from 'minimist';
 import { GoogleGenAI, type Interactions } from '@google/genai';
-import { SYSTEM_INSTRUCTION }          from '../src/prompts/system.js';
+import { GEMINI_ONLY_PROMPT as SYSTEM_INSTRUCTION } from '../src/prompts/geminiOnly.js';
 import { NidResultSchema }             from '../src/core/models.js';
 import { StepTimer }                   from '../src/core/timer.js';
 import { toImageMimeType, mimeFromExt } from '../src/utils/mime.js';
