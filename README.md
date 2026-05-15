@@ -1,6 +1,76 @@
 # KYC OCR — Bangladeshi NID Card Extraction
 
-Extracts structured fields from Bangladeshi National ID (NID) cards using **Gemini** and/or **Google Cloud Vision**. Supports laminated, smart, and temporary NID variants, front-only or front+back pairs, and seven configurable extraction strategies.
+TypeScript REST API and CLI toolkit for extracting structured fields from Bangladeshi National ID cards. The system combines Google Cloud Vision OCR with Gemini Interactions API workflows and supports front-only or front+back image processing for laminated, smart, and temporary NID variants.
+
+The project is designed for high-accuracy KYC extraction, not generic OCR. It understands Bangladeshi NID layouts, Bengali + English mixed text, front/back field placement, card-type differences, and confidence-based manual review routing.
+
+---
+
+## What This Extracts
+
+| Area | Fields |
+|---|---|
+| Front side | `nidNumber`, `nameEn`, `nameBn`, `dateOfBirth`, `fatherNameBn`, `motherNameBn` |
+| Back side | `addressBn`, `bloodGroup`, `issueDate` |
+| Smart NID back | `placeOfBirth` |
+| Temporary NID | `validUntil` |
+
+Supported card variants:
+
+| Variant | Description | Typical NID length |
+|---|---|---|
+| `smart` | Plastic chip card, barcode/MRZ on back, compact bilingual layout | 10 digits |
+| `laminated` | Old laminated card, red `ID NO`, Bengali address on back | 13 or 17 digits |
+| `temporary` | Temporary paper NID document with validity date | Usually 17 digits |
+| `unknown` | Variant could not be determined safely | 10 / 13 / 17 digits |
+
+---
+
+## Architecture
+
+The service exposes several extraction modes. The two most important modes are:
+
+| Mode | Purpose |
+|---|---|
+| `combined` | Full double-check mode: Cloud Vision runs first, Gemini receives the images and CV text, and Cloud Vision is also available as a Gemini tool. |
+| `smart` | Adaptive mode: Cloud Vision rich OCR + cheap text parser first, then Gemini Pro only verifies uncertain fields using targeted image crops. |
+
+High-level smart mode flow:
+
+```text
+Front/back NID images
+        |
+        v
+Google Cloud Vision rich OCR
+raw text + line confidence + bounding boxes
+        |
+        v
+Tier-1 Gemini text parser
+parses CV text into structured NID fields
+        |
+        v
+Deterministic validators
+NID length, dates, blood group, Bengali script, card-type rules
+        |
+        v
+Field-level router
+PASS / VERIFY / ABSENT
+        |
+        v
+Tier-2 Gemini Pro visual verification
+only for uncertain fields, using cropped image regions
+        |
+        v
+Final JSON result + timing + token usage + review flags
+```
+
+Why this matters:
+
+- Clean fields avoid expensive full-image Gemini Pro verification.
+- Uncertain fields get focused visual attention.
+- Cloud Vision confidence and bounding boxes are used instead of discarded.
+- Validators catch obvious OCR/model mistakes before final output.
+- Every output includes timing, token usage, source OCR, and confidence flags.
 
 ---
 
@@ -10,20 +80,33 @@ Extracts structured fields from Bangladeshi National ID (NID) cards using **Gemi
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Extraction Modes](#extraction-modes)
+- [Smart Mode Technical Details](#smart-mode-technical-details)
 - [REST API](#rest-api)
 - [CLI Scripts](#cli-scripts)
-- [NID Field Reference](#nid-field-reference)
 - [Output Format](#output-format)
+- [NID Field Reference](#nid-field-reference)
+- [Validation And Testing](#validation-and-testing)
 - [Project Structure](#project-structure)
+- [Security And Compliance](#security-and-compliance)
 
 ---
 
 ## Prerequisites
 
 - Node.js 20+
-- Google Cloud project with **Cloud Vision API** enabled
-- **Gemini API key** from [Google AI Studio](https://aistudio.google.com)
-- Cloud Vision service account JSON
+- Google Cloud project with Cloud Vision API enabled
+- Gemini API key from Google AI Studio
+- Google Cloud service account JSON with Cloud Vision access
+
+Recommended local files:
+
+```text
+.env
+service-account.json
+nid_images/
+```
+
+Do not commit `.env`, service account credentials, or real customer NID images.
 
 ---
 
@@ -33,60 +116,189 @@ Extracts structured fields from Bangladeshi National ID (NID) cards using **Gemi
 git clone <repo-url>
 cd kyc-ocr
 npm install
-cp .env.example .env   # then fill in your keys
+cp .env.example .env
 ```
+
+Then edit `.env` with your credentials.
 
 ---
 
 ## Configuration
 
-Edit `.env`:
+Basic `.env`:
 
 ```env
 GEMINI_API_KEY=your_api_key_from_aistudio
 GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
 PORT=3000
 
-# Model selection — see src/config/index.ts for all options
+# Main high-accuracy model
 GEMINI_MODEL=gemini-3.1-pro-preview
+
+# Thinking level for Gemini calls: minimal | low | medium | high
+GEMINI_THINKING_LEVEL=high
 ```
 
-### Available Models
+Smart mode settings:
 
-| Model ID | Description |
+```env
+# Tier 1 parses Cloud Vision text only.
+SMART_TIER1_MODEL=gemini-3.1-flash-lite
+
+# Tier 2 verifies uncertain fields visually.
+SMART_TIER2_MODEL=gemini-3.1-pro-preview
+
+# Minimum CV/source confidence required to skip Tier 2.
+SMART_CV_CONF_THRESHOLD=0.85
+
+# Max uncertain fields sent to Tier 2 in one extraction.
+SMART_MAX_TIER2_FIELDS=8
+```
+
+Model notes:
+
+| Model | Role |
 |---|---|
-| `gemini-3.1-pro-preview` | Latest, cutting-edge — **default** |
-| `gemini-2.5-pro` | Stable, highest accuracy |
-| `gemini-3.1-flash-lite` | Fast, lightweight Tier-1 parser |
-| `gemini-3-flash-preview` | Fast, latest generation |
-
-Change the active model by setting `GEMINI_MODEL` in `.env`. Unknown values fall back to the default with a console warning.
+| `gemini-3.1-pro-preview` | Highest-capability visual reasoning model used for Pro verification |
+| `gemini-2.5-pro` | Stable high-accuracy alternative |
+| `gemini-3.1-flash-lite` | Fast text-only Tier-1 parser for smart mode |
+| `gemini-3-flash-preview` | Faster general-purpose Gemini option |
 
 ---
 
 ## Extraction Modes
 
-| Mode | Cloud Vision | Gemini | Best for |
+| Mode | Cloud Vision | Gemini | Use case |
 |---|---|---|---|
-| `gemini_only` | No | Direct image read | Speed, no CV quota usage |
-| `vision_only` | Yes | No | Debugging raw OCR quality |
-| `vision_to_gemini` | Yes (text only) | Text prompt only | Cheapest structured output, zero Gemini image tokens |
-| `vision_fed_gemini` | Pre-call | Context only | Structured output without function-call quota |
-| `gemini_with_vision_tool` | On-demand | Tool loop | Gemini decides when to invoke OCR |
-| `combined` | Always + tool | Full loop | **Maximum accuracy** (default) |
-| `smart` | Rich CV + targeted crops | Tier-1 text parse + Tier-2 visual verify | Adaptive maximum accuracy with lower Pro usage |
+| `vision_only` | Yes | No | Debug raw OCR quality and language hints |
+| `gemini_only` | No | Full image read | Quick baseline without CV |
+| `vision_to_gemini` | Yes | CV text only | Cheap structured output, no Gemini image tokens |
+| `vision_fed_gemini` | Yes | Full image + CV context | Gemini reads image and compares CV text |
+| `gemini_with_vision_tool` | On demand | Gemini tool loop | Gemini decides when to call Cloud Vision |
+| `combined` | Always + tool | Full image + tool loop | Maximum full-card cross-verification |
+| `smart` | Rich CV + crops | Tier-1 text + Tier-2 crops | Adaptive maximum accuracy and lower Pro usage |
 
-**`combined` strategy flow:**
-1. Cloud Vision runs on all images in parallel (guaranteed first pass)
-2. CV raw text is passed as context to Gemini
-3. Cloud Vision is also registered as a callable function tool for re-verification
-4. Gemini extracts and cross-verifies all fields; disagreements are flagged `needsReview: true`
+Recommended usage:
 
-**`smart` strategy flow:**
-1. Cloud Vision returns rich OCR lines with confidence and bounding boxes.
-2. Gemini Flash Lite parses CV text only into labeled fields.
-3. Validators route low-confidence or invalid fields to Pro vision.
-4. Pro sees original images plus targeted crops only for uncertain fields.
+| Scenario | Recommended mode |
+|---|---|
+| Production KYC with balanced cost/accuracy | `smart` |
+| Highest full-card verification regardless of cost | `combined` |
+| Raw OCR debugging | `vision_only` |
+| Model-only comparison | `gemini_only` |
+| Very low-cost structured extraction | `vision_to_gemini` |
+
+---
+
+## Smart Mode Technical Details
+
+Smart mode is implemented in [src/strategies/smart.ts](src/strategies/smart.ts).
+
+### Phase 1: Rich Cloud Vision OCR
+
+Cloud Vision runs on all provided images, normally `front` and optionally `back`.
+
+Configuration:
+
+```ts
+imageContext: {
+  languageHints: ['bn', 'en'],
+  textDetectionParams: {
+    enableTextDetectionConfidenceScore: true,
+    advancedOcrOptions: ['legacyLayout'],
+  },
+}
+```
+
+The rich OCR layer produces:
+
+| Data | Purpose |
+|---|---|
+| Raw text | Full fallback text and audit trace |
+| Line records | LLM-friendly text chunks |
+| Confidence scores | Field-level routing signal |
+| Bounding boxes | Crop uncertain fields for Gemini Pro |
+| Side marker | Keeps front/back extraction separate |
+
+Implemented in [src/providers/vision.ts](src/providers/vision.ts).
+
+### Phase 2: Tier-1 Gemini Text Parser
+
+Tier 1 sends Cloud Vision text lines to a fast text model. It does not send full images.
+
+Default model:
+
+```env
+SMART_TIER1_MODEL=gemini-3.1-flash-lite
+```
+
+Tier 1 returns:
+
+- Full NID extraction object.
+- Source line IDs for each field.
+- Minimum CV confidence for each field.
+- Whether the field needs visual verification.
+
+Prompt: [src/prompts/smartTier1.ts](src/prompts/smartTier1.ts)
+
+### Phase 3: Deterministic Validators
+
+Before trusting Tier 1, pure TypeScript validators inspect the output.
+
+Examples:
+
+| Validator | Rule |
+|---|---|
+| NID number | Smart NID should be 10 digits; laminated/temporary allow 10, 13, or 17 |
+| Dates | DOB, issue date, and validUntil must look date-like and have reasonable ranges |
+| Blood group | Must be one of `A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-` |
+| Bengali fields | `nameBn`, `fatherNameBn`, `motherNameBn`, `addressBn` should contain Bengali script |
+| Variant fields | `placeOfBirth` is smart-only; `validUntil` is temporary-only |
+
+Implemented in:
+
+- [src/utils/fieldValidators.ts](src/utils/fieldValidators.ts)
+- [src/utils/crossFieldCheck.ts](src/utils/crossFieldCheck.ts)
+
+### Phase 4: Field-Level Routing
+
+Each field is routed independently:
+
+| Route | Meaning | Action |
+|---|---|---|
+| `PASS` | Field is clear enough | Use Tier-1 value |
+| `VERIFY` | Low confidence, validator issue, or explicit uncertainty | Send field crop to Tier-2 Pro |
+| `ABSENT` | Field is not expected for this card type or provided side | Return null/unreadable without review |
+
+The threshold is controlled by:
+
+```env
+SMART_CV_CONF_THRESHOLD=0.85
+```
+
+### Phase 5: Targeted Crop Verification
+
+For `VERIFY` fields:
+
+1. Find the source OCR line bounding box.
+2. Crop that region from the original image.
+3. Upload original image and crop through Gemini Files API.
+4. Ask Gemini Pro to confirm or correct only the uncertain fields.
+
+Crop utility: [src/utils/imageCrop.ts](src/utils/imageCrop.ts)
+
+Tier-2 prompt: [src/prompts/smartTier2.ts](src/prompts/smartTier2.ts)
+
+### Phase 6: Final Assembly
+
+The final result is normalized and validated with Zod. It includes:
+
+- structured extraction
+- raw Cloud Vision outputs
+- per-step timing
+- Gemini call count
+- token usage
+- fields needing review
 
 ---
 
@@ -95,197 +307,247 @@ Change the active model by setting `GEMINI_MODEL` in `.env`. Unknown values fall
 Start the server:
 
 ```bash
-npm run dev       # development (hot-reload)
-npm start         # production
+npm run dev
 ```
 
-Interactive API docs available at **`http://localhost:3000/docs`** (Swagger UI).
-
----
-
-### `POST /extract`
-
-Extract NID fields from one or two card images.
-
-**Request** — `multipart/form-data`
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `front` | file | ✅ | Front-side NID image |
-| `back` | file | ❌ | Back-side NID image |
-| `mode` | string | ❌ | Extraction mode (default: `combined`) |
-
-**Example**
+Production build:
 
 ```bash
-# Front only
-curl -X POST http://localhost:3000/extract \
-  -F "front=@nid_front.jpg"
-
-# Front + back, specific mode
-curl -X POST http://localhost:3000/extract \
-  -F "front=@nid_front.jpg" \
-  -F "back=@nid_back.jpg" \
-  -F "mode=combined"
+npm run build
+npm start
 ```
 
-**Response `200`**
+Interactive Swagger docs:
 
-```json
-{
-  "success": true,
-  "mode": "combined",
-  "extraction": {
-    "cardType": "laminated",
-    "nidNumber":    { "value": "1234567890123", "confidence": "high", "needsReview": false },
-    "nameEn":       { "value": "MD. SAMPLE USER",   "confidence": "high", "needsReview": false },
-    "nameBn":       { "value": "মোঃ নমুনা ব্যবহারকারী",  "confidence": "high", "needsReview": false },
-    "dateOfBirth":  { "value": "12 Sep 1994",        "confidence": "high", "needsReview": false },
-    "fatherNameBn": { "value": "মোঃ নমুনা পিতা",  "confidence": "high", "needsReview": false },
-    "motherNameBn": { "value": "মোসাঃ নমুনা মাতা","confidence": "high", "needsReview": false },
-    "addressBn":    { "value": "গ্রাম/রাস্তা: ...", "confidence": "high", "needsReview": false },
-    "bloodGroup":   { "value": null,                 "confidence": "unreadable", "needsReview": false },
-    "issueDate":    { "value": "09/09/2013",          "confidence": "high", "needsReview": false },
-    "placeOfBirth": { "value": null,                  "confidence": "unreadable", "needsReview": false },
-    "validUntil":   { "value": null,                  "confidence": "unreadable", "needsReview": false },
-    "overallConfidence": "high",
-    "fieldsNeedingReview": []
-  },
-  "visionOutputs": [
-    { "side": "front", "rawText": "...", "timingMs": 1980 },
-    { "side": "back",  "rawText": "...", "timingMs": 2230 }
-  ],
-  "timing": {
-    "steps": {
-      "vision_front":   { "ms": 1980, "formatted": "1.98s" },
-      "vision_back":    { "ms": 2230, "formatted": "2.23s" },
-      "gemini_initial": { "ms": 27970, "formatted": "27.97s" }
-    },
-    "visionTotalMs": 4210,
-    "geminiTotalMs": 27970,
-    "totalMs": 30270,
-    "totalFormatted": "30.27s"
-  },
-  "geminiCallCount": 1,
-  "tokenUsage": {
-    "inputTokens": 2404,
-    "outputTokens": 319,
-    "totalTokens": 3918,
-    "thoughtTokens": 1195
-  }
-}
+```text
+http://localhost:3000/docs
 ```
 
-**Error responses**
-
-| Status | Cause |
-|---|---|
-| `400` | Missing `front` field or invalid `mode` value |
-| `500` | Extraction failed (model error, schema parse error) |
-
----
-
-### `GET /health`
-
-Returns service status and active model.
+### Health Check
 
 ```bash
 curl http://localhost:3000/health
 ```
 
+Response:
+
 ```json
 {
   "status": "ok",
   "model": "gemini-3.1-pro-preview",
-  "time": "2026-05-12T11:00:00.000Z"
+  "time": "2026-05-15T00:00:00.000Z"
 }
 ```
 
----
+### Extract NID Fields
 
-### `GET /docs`
+Endpoint:
 
-Swagger UI — interactive API documentation with live request testing.
+```http
+POST /extract
+```
+
+Request type:
+
+```text
+multipart/form-data
+```
+
+Fields:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `front` | file | Yes | Front-side NID image |
+| `back` | file | No | Back-side NID image |
+| `mode` | string | No | Extraction mode. Default is configured in server code, normally `combined` or `smart` depending on caller choice |
+
+Examples:
+
+```bash
+# Front only, default mode
+curl -X POST http://localhost:3000/extract \
+  -F "front=@nid_images/others/3_1 OCR.jpg"
+
+# Front + back using smart mode
+curl -X POST http://localhost:3000/extract \
+  -F "front=@nid_images/special/2/front.jpeg" \
+  -F "back=@nid_images/special/2/back.jpeg" \
+  -F "mode=smart"
+
+# Full combined verification
+curl -X POST http://localhost:3000/extract \
+  -F "front=@nid_images/special/2/front.jpeg" \
+  -F "back=@nid_images/special/2/back.jpeg" \
+  -F "mode=combined"
+```
+
+Success response shape:
+
+```json
+{
+  "success": true,
+  "mode": "smart",
+  "extraction": {
+    "cardType": "smart",
+    "nidNumber": {
+      "value": "1234567890",
+      "confidence": "high",
+      "needsReview": false
+    },
+    "nameEn": {
+      "value": "MD. SAMPLE USER",
+      "confidence": "high",
+      "needsReview": false
+    },
+    "nameBn": {
+      "value": "মোঃ নমুনা ব্যবহারকারী",
+      "confidence": "high",
+      "needsReview": false
+    },
+    "dateOfBirth": {
+      "value": "04 Aug 1993",
+      "confidence": "high",
+      "needsReview": false
+    },
+    "fatherNameBn": {
+      "value": "মোঃ নমুনা পিতা",
+      "confidence": "high",
+      "needsReview": false
+    },
+    "motherNameBn": {
+      "value": "মোসাঃ নমুনা মাতা",
+      "confidence": "high",
+      "needsReview": false
+    },
+    "addressBn": {
+      "value": "বাসা / হোল্ডিং : ১৯০, গ্রাম / রাস্তা : নমুনা সড়ক, ডাকঘর : নমুনা- ১২১৬, নমুনা, ঢাকা",
+      "confidence": "high",
+      "needsReview": false
+    },
+    "bloodGroup": {
+      "value": "O+",
+      "confidence": "high",
+      "needsReview": false
+    },
+    "issueDate": {
+      "value": "19 Jun 2016",
+      "confidence": "high",
+      "needsReview": false
+    },
+    "placeOfBirth": {
+      "value": "SAMPLE DISTRICT",
+      "confidence": "high",
+      "needsReview": false
+    },
+    "validUntil": {
+      "value": null,
+      "confidence": "unreadable",
+      "needsReview": false
+    },
+    "overallConfidence": "high",
+    "fieldsNeedingReview": []
+  },
+  "visionOutputs": [
+    {
+      "side": "front",
+      "rawText": "...",
+      "timingMs": 1180
+    },
+    {
+      "side": "back",
+      "rawText": "...",
+      "timingMs": 1220
+    }
+  ],
+  "timing": {
+    "steps": {
+      "vision_front": {
+        "ms": 1180,
+        "formatted": "1.18s"
+      },
+      "vision_back": {
+        "ms": 1220,
+        "formatted": "1.22s"
+      },
+      "gemini_tier1_text_parse": {
+        "ms": 6662,
+        "formatted": "6.66s"
+      }
+    },
+    "visionTotalMs": 2400,
+    "geminiTotalMs": 6662,
+    "totalMs": 7940,
+    "totalFormatted": "7.94s"
+  },
+  "geminiCallCount": 1,
+  "tokenUsage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "totalTokens": 0,
+    "thoughtTokens": 0
+  }
+}
+```
+
+Error responses:
+
+| Status | Cause |
+|---|---|
+| `400` | Missing `front`, invalid mode, or invalid upload |
+| `500` | Cloud Vision failure, Gemini failure, schema parse failure, or unexpected extraction error |
 
 ---
 
 ## CLI Scripts
 
-All scripts accept `--mode` to select the extraction strategy.
+All CLI scripts support `--mode`.
 
----
+Use `NODE_OPTIONS=--disable-warning=DEP0040` if your Node version prints the `punycode` deprecation warning. The npm scripts already include it.
 
-### `scripts/runOne.ts` — Single image extraction
+### Single Front/Back Pair
 
 ```bash
-npx tsx scripts/runOne.ts --front <path> [--back <path>] [--mode <mode>]
+npm run extract -- \
+  --front nid_images/special/2/front.jpeg \
+  --back nid_images/special/2/back.jpeg \
+  --mode smart
 ```
 
-| Flag | Required | Default | Description |
-|---|---|---|---|
-| `--front` | ✅ | — | Path to front-side image |
-| `--back` | ❌ | — | Path to back-side image |
-| `--mode` | ❌ | `combined` | Extraction mode |
-
-**Examples**
+Equivalent direct command:
 
 ```bash
-# Front only, default mode
-npx tsx scripts/runOne.ts --front nid_images/others/Customer_nid_front.png
-
-# Front + back pair
 npx tsx scripts/runOne.ts \
-  --front nid_images/special/1/front.jpeg \
-  --back  nid_images/special/1/back.jpeg
-
-# Specific mode
-npx tsx scripts/runOne.ts --front nid.jpg --mode gemini_only
-
-# Debug raw OCR
-npx tsx scripts/runOne.ts --front nid.jpg --mode vision_only
+  --front nid_images/special/2/front.jpeg \
+  --back nid_images/special/2/back.jpeg \
+  --mode smart
 ```
 
-Output is saved to `outputs/<filename>_<mode>_<timestamp>.json`.
+Output:
 
----
+```text
+outputs/<front_filename>_<mode>_<timestamp>.json
+```
 
-### `scripts/batch.ts` — Batch directory processing
+### Batch Front-Only Directory
 
 ```bash
-npx tsx scripts/batch.ts [--dir <path>] [--mode <mode>]
+npm run batch -- --dir ./nid_images/others --mode smart
 ```
 
-| Flag | Required | Default | Description |
-|---|---|---|---|
-| `--dir` | ❌ | `./nid_images/others` | Directory of front-side images |
-| `--mode` | ❌ | `combined` | Extraction mode |
+Output:
 
-**Example**
-
-```bash
-npx tsx scripts/batch.ts --dir ./nid_images/others --mode vision_fed_gemini
+```text
+outputs/batch_<mode>_<timestamp>/
+├── <image>.json
+└── _summary.json
 ```
 
-Output: `outputs/batch_<timestamp>/` — one JSON per image + `_summary.json`.
+### Batch Front+Back Pairs
 
----
+Expected directory format:
 
-### `scripts/batchSpecial.ts` — Front+back paired batch
-
-For directories where each subdirectory contains a `front.*` and `back.*` image.
-
-```bash
-npx tsx scripts/batchSpecial.ts [--dir <path>] [--mode <mode>]
-```
-
-| Flag | Required | Default | Description |
-|---|---|---|---|
-| `--dir` | ❌ | `./nid_images/special` | Root directory of numbered pair subdirs |
-| `--mode` | ❌ | `combined` | Extraction mode |
-
-**Expected directory layout:**
-```
-special/
+```text
+nid_images/special/
 ├── 1/
 │   ├── front.jpeg
 │   └── back.jpeg
@@ -294,76 +556,58 @@ special/
 │   └── back.jpg
 ```
 
-File names must contain `front` or `back` (case-insensitive). Any supported image extension works.
-
-**Example**
+Run:
 
 ```bash
-npx tsx scripts/batchSpecial.ts --dir ./nid_images/special --mode combined
+npm run batch:special -- --dir ./nid_images/special --mode smart
 ```
 
-Output: `outputs/special_<timestamp>/` — one JSON per pair + `_summary.json`.
+Output:
+
+```text
+outputs/special_smart_<timestamp>/
+├── pair_1.json
+├── pair_2.json
+├── ...
+└── _summary.json
+```
+
+The special batch summary includes:
+
+- pair ID
+- card type
+- extracted key fields
+- overall confidence
+- fields needing review
+- timing
+- Gemini call count
+- token usage
+
+### Benchmark Models
+
+```bash
+npm run benchmark -- --front nid_images/others/Customer_nid_front.png
+```
+
+This compares configured Gemini models on the same image and writes a benchmark JSON under `outputs/`.
 
 ---
 
-### `scripts/benchmark.ts` — Model comparison
+## Output Format
 
-Runs `gemini_only` mode across **all configured models** on a single image and prints a timing + token usage + extraction diff table.
+Top-level output:
 
-```bash
-npx tsx scripts/benchmark.ts --front <path>
-```
-
-| Flag | Required | Description |
-|---|---|---|
-| `--front` | ✅ | Image to benchmark against |
-
-**Example**
-
-```bash
-npx tsx scripts/benchmark.ts --front nid_images/others/Customer_nid_front.png
-```
-
-Output: console table + `outputs/benchmark_gemini_only_<timestamp>.json`.
-
----
-
-## NID Field Reference
-
-### Front side (both variants)
-
-| Field | Bangla label | Description |
-|---|---|---|
-| `nidNumber` | ID NO | 10, 13, or 17-digit NID number |
-| `nameEn` | Name | Holder's name in English |
-| `nameBn` | নাম | Holder's name in Bengali |
-| `dateOfBirth` | Date of Birth | Format: `DD MMM YYYY` |
-| `fatherNameBn` | পিতা | Father's name in Bengali |
-| `motherNameBn` | মাতা | Mother's name in Bengali |
-
-### Back side (both variants)
-
-| Field | Bangla label | Description |
-|---|---|---|
-| `addressBn` | ঠিকানা | Full address in Bengali |
-| `bloodGroup` | রক্তের গ্রুপ | e.g. `A+`, `O-` |
-| `issueDate` | প্রদানের তারিখ | Card issue date |
-
-### Smart NID back only
-
-| Field | Description |
+| Key | Description |
 |---|---|
-| `placeOfBirth` | Place of birth, printed on smart NID back side |
+| `success` | API success flag |
+| `mode` | Extraction mode used |
+| `extraction` | Structured NID result, absent for `vision_only` |
+| `visionOutputs` | Raw CV text and timing per side |
+| `timing` | Per-step and total duration |
+| `geminiCallCount` | Number of Gemini Interactions API calls |
+| `tokenUsage` | Gemini token usage when available |
 
-### Temporary NID only
-
-| Field | Description |
-|---|---|
-| `validUntil` | Validity/expiry date for temporary NID documents |
-
-### Per-field result shape
-
-Every field returns:
+Per-field result:
 
 ```json
 {
@@ -373,75 +617,174 @@ Every field returns:
 }
 ```
 
+Confidence meanings:
+
 | Confidence | Meaning |
 |---|---|
-| `high` | Gemini and Cloud Vision agree |
-| `low` | Gemini and Cloud Vision disagree — human review recommended |
-| `unreadable` | Both sources failed to read the field |
+| `high` | Sources and validators support the value |
+| `low` | Conflict or uncertainty remains; review recommended |
+| `unreadable` | Field could not be read or is absent for the provided side/card type |
 
-`needsReview: true` is set automatically when `confidence` is `low` or `unreadable` (except for fields not present on the provided side).
+`needsReview` is `false` for fields that are correctly absent. Example: `placeOfBirth` on a laminated NID should be null/unreadable but does not need review.
 
 ---
 
-## Output Format
+## NID Field Reference
 
-Every JSON output file follows this structure:
+### Common Front Fields
 
-```json
-{
-  "mode": "combined",
-  "extraction": { ... },
-  "visionOutputs": [ { "side": "front", "rawText": "...", "timingMs": 1980 } ],
-  "timing": {
-    "steps": {
-      "vision_front":   { "ms": 1980, "formatted": "1.98s" },
-      "gemini_initial": { "ms": 27970, "formatted": "27.97s" }
-    },
-    "visionTotalMs": 1980,
-    "geminiTotalMs": 27970,
-    "totalMs": 30270,
-    "totalFormatted": "30.27s"
-  },
-  "geminiCallCount": 1,
-  "tokenUsage": {
-    "inputTokens": 2404,
-    "outputTokens": 319,
-    "totalTokens": 3918,
-    "thoughtTokens": 1195
-  }
-}
+| Field | Labels / cues | Notes |
+|---|---|---|
+| `nidNumber` | `ID NO`, `NID No`, `NID নম্বর` | Digits only. Strip spaces. Smart cards usually have 10 digits. |
+| `nameEn` | `Name` | English holder name. |
+| `nameBn` | `নাম` | Bengali holder name. |
+| `dateOfBirth` | `Date of Birth`, `জন্ম তারিখ` | Normalize where possible to `DD MMM YYYY`. |
+| `fatherNameBn` | `পিতা`, `Father` | Bengali father name. |
+| `motherNameBn` | `মাতা`, `Mother` | Bengali mother name. |
+
+### Common Back Fields
+
+| Field | Labels / cues | Notes |
+|---|---|---|
+| `addressBn` | `ঠিকানা` | Bengali address, often spans multiple lines. |
+| `bloodGroup` | `Blood Group`, `রক্তের গ্রুপ` | Valid values: `A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-`. |
+| `issueDate` | `Issue Date`, `প্রদানের তারিখ` | Card issue date. |
+
+### Variant-Specific Fields
+
+| Field | Variant | Notes |
+|---|---|---|
+| `placeOfBirth` | Smart NID | Usually printed on the back in English. |
+| `validUntil` | Temporary NID | Validity/expiry date on temporary paper NID. |
+
+### Variant-Specific OCR Notes
+
+| Variant | Important OCR behavior |
+|---|---|
+| Smart | Labels are small and may be above values; NID number can appear spaced like `123 456 7890`; MRZ lines must be ignored. |
+| Laminated | Uses colon labels such as `নাম:`, `পিতা:`, `মাতা:`; NID often printed in red; back has Bengali legal text and barcode. |
+| Temporary | Paper/form layout; may contain validity text and a different field arrangement. |
+
+---
+
+## Validation And Testing
+
+Type check:
+
+```bash
+npx tsc --noEmit
 ```
 
-Batch runs also produce a `_summary.json` with a flat array of all results for easy comparison.
+Run one known front+back pair with smart mode:
+
+```bash
+npm run extract -- \
+  --front nid_images/special/2/front.jpeg \
+  --back nid_images/special/2/back.jpeg \
+  --mode smart
+```
+
+Run all special front+back pairs:
+
+```bash
+npm run batch:special -- --dir nid_images/special --mode smart
+```
+
+Expected recent validation result:
+
+| Dataset | Mode | Result |
+|---|---|---|
+| `nid_images/special` | `smart` | 10/10 succeeded |
+| `nid_images/special` | `smart` | all `overallConfidence: high` |
+| `nid_images/special` | `smart` | no fields needing review |
+
+Smart mode timing behavior from the latest run:
+
+| Case | Gemini calls | Typical total time |
+|---|---:|---:|
+| Clean smart card | 1 | ~7-8s |
+| Laminated cards needing targeted verification | 2 | ~30-44s |
 
 ---
 
 ## Project Structure
 
-```
+```text
 src/
-├── config/           Environment config + model registry
-├── core/             Shared types, Zod schema, StepTimer
-├── providers/        Lazy singletons — Gemini client, Cloud Vision client
-├── prompts/          Shared + mode-specific prompts
-├── strategies/       Extraction strategies + factory, including smart mode
-├── utils/            MIME, timestamp, JSON, validation, crop helpers
-├── api/              Express routes, middleware, OpenAPI spec
-├── server.ts         App factory
-└── index.ts          Entry point
+├── api/
+│   ├── middleware/          Upload + error middleware
+│   ├── openapi.ts           Swagger/OpenAPI spec
+│   └── routes.ts            REST routes
+├── config/
+│   └── index.ts             Env config, model registry, smart thresholds
+├── core/
+│   ├── models.ts            Zod NID result schema
+│   ├── smartTypes.ts        Smart mode OCR/routing types
+│   ├── timer.ts             Per-step timing helper
+│   └── types.ts             Shared extraction types and modes
+├── providers/
+│   ├── gemini.ts            Gemini client, Files API, usage helpers
+│   └── vision.ts            Cloud Vision OCR and rich line extraction
+├── prompts/
+│   ├── shared/              NID format, Bengali OCR rules, output schema
+│   ├── smartTier1.ts        Tier-1 text parser prompt
+│   ├── smartTier2.ts        Tier-2 crop verifier prompt
+│   └── smartArbitration.ts  Arbitration prompt scaffold
+├── strategies/
+│   ├── combined.ts
+│   ├── geminiOnly.ts
+│   ├── geminiWithVisionTool.ts
+│   ├── smart.ts
+│   ├── visionFedGemini.ts
+│   ├── visionOnly.ts
+│   ├── visionToGemini.ts
+│   └── index.ts
+├── utils/
+│   ├── crossFieldCheck.ts
+│   ├── fieldValidators.ts
+│   ├── imageCrop.ts
+│   ├── json.ts
+│   ├── mime.ts
+│   ├── nidSchema.ts
+│   ├── normalize.ts
+│   └── timestamp.ts
+├── server.ts
+└── index.ts
 
 scripts/
-├── runOne.ts         Single image / front+back pair
-├── batch.ts          Directory batch
-├── batchSpecial.ts   Front+back paired batch
-└── benchmark.ts      Multi-model comparison
+├── runOne.ts
+├── batch.ts
+├── batchSpecial.ts
+└── benchmark.ts
 ```
 
 ---
 
-## Compliance Notes
+## Security And Compliance
 
-- Cloud Vision language hints are fixed to `bn` (Bengali) + `en` (English)
-- NID images contain PII — never commit them to version control (enforced by `.gitignore`)
-- Credentials (`service-account.json`, `.env`) are git-ignored
-- For production: use GCP `asia-south1` region and enforce Bangladesh Data Protection Act data residency requirements
+NID cards are sensitive personally identifiable information.
+
+Operational rules:
+
+- Never commit `.env`, service-account JSON, or real NID images.
+- Keep raw OCR outputs and extracted JSON in controlled storage.
+- Minimize retention of uploaded images and generated outputs.
+- Use least-privilege Google Cloud service accounts.
+- Prefer data residency close to Bangladesh when deploying cloud infrastructure.
+- Review Bangladesh Bank KYC requirements and Bangladesh data protection requirements before production use.
+
+Google/Gemini operational notes:
+
+- Cloud Vision is language-hinted to Bengali + English.
+- Gemini calls are deterministic where configured with `temperature: 0` and `seed`.
+- Gemini Files API uploads are cleaned up where the strategy controls file lifecycle; files also expire automatically according to provider behavior.
+
+---
+
+## Known Practical Notes
+
+- Low-resolution or blurry images may still require human review.
+- Smart mode is adaptive: faster results usually mean no Tier-2 visual verification was needed.
+- Laminated cards often need Tier-2 verification because old scans, red ink, and Bengali address lines are harder for OCR.
+- `vision_only` is the best first debug step when extraction quality looks wrong.
+- `combined` is still useful as a full-card cross-check baseline against `smart`.
