@@ -68,7 +68,7 @@ VARIANT 2: SMART NID  (cardType: "smart")
     Place of Birth: <value>  ← English, present only on smart NID
     Issue Date: <DD MMM YYYY> ← English label
     [Lotus watermark and small photo]
-    [MRZ zone — 3 lines of machine-readable text, e.g. "I<BGD1234567890<55<<<<<<<"]
+    [MRZ zone — 3 lines of machine-readable text, e.g. "I<BGD1234567890<00<<<<<<<"]
 
   SMART-specific notes:
     - placeOfBirth: present on BACK (English "Place of Birth")

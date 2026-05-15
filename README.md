@@ -405,7 +405,7 @@ Success response shape:
       "needsReview": false
     },
     "dateOfBirth": {
-      "value": "04 Aug 1993",
+      "value": "01 Jan 1990",
       "confidence": "high",
       "needsReview": false
     },
@@ -420,7 +420,7 @@ Success response shape:
       "needsReview": false
     },
     "addressBn": {
-      "value": "বাসা / হোল্ডিং : ১৯০, গ্রাম / রাস্তা : নমুনা সড়ক, ডাকঘর : নমুনা- ১২১৬, নমুনা, ঢাকা",
+      "value": "বাসা / হোল্ডিং : ১২৩, গ্রাম / রাস্তা : নমুনা সড়ক, ডাকঘর : নমুনা - ১২৩৪, নমুনা জেলা",
       "confidence": "high",
       "needsReview": false
     },
@@ -430,7 +430,7 @@ Success response shape:
       "needsReview": false
     },
     "issueDate": {
-      "value": "19 Jun 2016",
+      "value": "01 Jan 2020",
       "confidence": "high",
       "needsReview": false
     },

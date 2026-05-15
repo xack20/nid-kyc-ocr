@@ -49,8 +49,8 @@ Three OCR failure modes — restore in all cases:
   ০ (Bengali zero) ↔ ও (letter "o")
 
 ── H. Spurious word-boundary spaces ────────────────────────────
-  "উত তরা"→"উত্তরা"   "গাজী পুর"→"নমুনা জেলা"   "তাল তৈল"→"নমুনা সড়ক"
-  "হোল ডিং"→"হোল্ডিং"   "কর্পো রেশন"→"কর্পোরেশন"   "নমু না"→"নমুনা"
+  "ন মু না"→"নমুনা"   "স ড় ক"→"সড়ক"   "ব্য ব হা র"→"ব্যবহার"
+  "হোল ডিং"→"হোল্ডিং"   "কর্পো রেশন"→"কর্পোরেশন"   "কা র্ড"→"কার্ড"
 
 ── I. Abbreviation normalisation ────────────────────────────────
   Visarga ঃ misread as ":" or "।":
@@ -70,11 +70,11 @@ Three OCR failure modes — restore in all cases:
   Smart NID field labels are TINY printed above the value — OCR often merges
   the label with the value or reads them on the same line:
     "নামMD. SAMPLE USER" → label "নাম" + nameBn on next line + nameEn
-    "NID No1234567890"    → strip "NID No" prefix, digits only
+    "NID No1234567890"   → strip "NID No" prefix, digits only
   NID number on smart card has spaces: "123 456 7890" → extract as "1234567890"
 
   MRZ lines on smart NID back (3 lines starting with "I<BGD"):
     IGNORE these entirely. Do not extract any field from them.
-    Example: "I<BGD123456789<55<<<<<<<<<<<<<"  → skip
-             "9308042M3106187BGD<<<<<<<<<<<2"  → skip
-             "USER<<MD<SAMPLE<<<<<<<<<<<<<<"  → skip`;
+    Example: "I<BGD123456789<00<<<<<<<<<<<<<"  → skip
+             "9001010M3001010BGD<<<<<<<<<<<0"  → skip
+             "USER<<MD<SAMPLE<<<<<<<<<<<<<<"   → skip`;
