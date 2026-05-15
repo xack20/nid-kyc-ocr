@@ -18,7 +18,6 @@ Return ONLY a valid JSON object — no markdown fences, no explanation:
   "bloodGroup":   { "value": string | null, "confidence": "high"|"low"|"unreadable", "needsReview": boolean },
   "issueDate":    { "value": string | null, "confidence": "high"|"low"|"unreadable", "needsReview": boolean },
 
-  "pin":          { "value": string | null, "confidence": "high"|"low"|"unreadable", "needsReview": boolean },
   "placeOfBirth": { "value": string | null, "confidence": "high"|"low"|"unreadable", "needsReview": boolean },
   "validUntil":   { "value": string | null, "confidence": "high"|"low"|"unreadable", "needsReview": boolean },
 

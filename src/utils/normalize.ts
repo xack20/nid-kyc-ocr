@@ -42,7 +42,7 @@ export function normalizeNidJson(raw: unknown): unknown {
   const fieldKeys = [
     'nidNumber', 'nameEn', 'nameBn', 'dateOfBirth',
     'fatherNameBn', 'motherNameBn', 'addressBn',
-    'bloodGroup', 'issueDate', 'pin', 'placeOfBirth', 'validUntil',
+    'bloodGroup', 'issueDate', 'placeOfBirth', 'validUntil',
   ];
 
   for (const key of fieldKeys) {

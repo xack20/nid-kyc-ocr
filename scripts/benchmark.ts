@@ -59,7 +59,7 @@ interface BenchmarkRow {
   addressBn:     string | null;
   bloodGroup:    string | null;
   issueDate:     string | null;
-  pin:           string | null;
+  placeOfBirth:  string | null;
   error?:        string;
 }
 
@@ -107,7 +107,7 @@ async function runModel(modelId: string, imageBuffer: Buffer, mimeType: string):
       thoughtTokens: 0, totalTokens: 0,
       overall: '—', cardType: null, nidNumber: null, nameEn: null, nameBn: null,
       dateOfBirth: null, fatherNameBn: null, motherNameBn: null, addressBn: null,
-      bloodGroup: null, issueDate: null, pin: null,
+      bloodGroup: null, issueDate: null, placeOfBirth: null,
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -155,7 +155,7 @@ async function runModel(modelId: string, imageBuffer: Buffer, mimeType: string):
     addressBn:    extraction?.addressBn.value    ?? null,
     bloodGroup:   extraction?.bloodGroup.value   ?? null,
     issueDate:    extraction?.issueDate.value     ?? null,
-    pin:          extraction?.pin.value           ?? null,
+    placeOfBirth: extraction?.placeOfBirth.value   ?? null,
     error:        parseError,
   };
 }
@@ -264,7 +264,7 @@ async function main() {
     { label: 'Address (BN)',  key: 'addressBn'    },
     { label: 'Blood Group',   key: 'bloodGroup'   },
     { label: 'Issue Date',    key: 'issueDate'    },
-    { label: 'PIN',           key: 'pin'          },
+    { label: 'Place of Birth', key: 'placeOfBirth' },
     { label: 'Overall',       key: 'overall'      },
   ];
 

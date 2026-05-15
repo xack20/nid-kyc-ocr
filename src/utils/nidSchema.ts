@@ -11,7 +11,7 @@ const fieldResultSchema = {
 const fieldKeys = [
   'nidNumber', 'nameEn', 'nameBn', 'dateOfBirth',
   'fatherNameBn', 'motherNameBn', 'addressBn',
-  'bloodGroup', 'issueDate', 'pin', 'placeOfBirth', 'validUntil',
+  'bloodGroup', 'issueDate', 'placeOfBirth', 'validUntil',
 ];
 
 /** JSON Schema for the NID result — passed to response_format.schema to guide model output. */
@@ -20,7 +20,7 @@ export const NID_JSON_SCHEMA = {
   required: [
     'cardType', 'nidNumber', 'nameEn', 'nameBn', 'dateOfBirth',
     'fatherNameBn', 'motherNameBn', 'addressBn', 'bloodGroup',
-    'issueDate', 'pin', 'placeOfBirth', 'validUntil',
+    'issueDate', 'placeOfBirth', 'validUntil',
     'overallConfidence', 'fieldsNeedingReview',
   ],
   properties: {

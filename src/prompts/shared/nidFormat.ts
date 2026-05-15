@@ -38,7 +38,6 @@ VARIANT 1: LAMINATED NID  (cardType: "laminated")
 
   LAMINATED-specific notes:
     - placeOfBirth: NOT present on laminated → null, confidence: "unreadable", needsReview: false
-    - pin: NOT present on laminated → null, confidence: "unreadable", needsReview: false
     - validUntil: NOT present → null, confidence: "unreadable", needsReview: false
     - fatherNameBn / motherNameBn are on the FRONT side
 
@@ -73,7 +72,6 @@ VARIANT 2: SMART NID  (cardType: "smart")
 
   SMART-specific notes:
     - placeOfBirth: present on BACK (English "Place of Birth")
-    - pin: present on BACK (may be near MRZ or printed separately)
     - validUntil: NOT present → null, confidence: "unreadable", needsReview: false
     - NID number digits: remove spaces when extracting (e.g. "123 456 7890" → "1234567890")
     - MRZ lines: do NOT extract as any named field; ignore them
@@ -97,7 +95,6 @@ VARIANT 3: TEMPORARY NID  (cardType: "temporary")
   TEMPORARY-specific notes:
     - validUntil: present — extract it
     - placeOfBirth: usually NOT present
-    - pin: NOT present
 
 ════════════════════════════════════════
 FIELD PARSING RULES (all variants)

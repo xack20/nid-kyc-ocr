@@ -92,7 +92,7 @@ async function main() {
     console.log(`  Address (BN)  : ${extraction.addressBn.value ?? 'N/A'}  [${extraction.addressBn.confidence}]`);
     console.log(`  Blood group   : ${extraction.bloodGroup.value ?? 'N/A'}  [${extraction.bloodGroup.confidence}]`);
     console.log(`  Issue date    : ${extraction.issueDate.value ?? 'N/A'}  [${extraction.issueDate.confidence}]`);
-    console.log(`  PIN           : ${extraction.pin.value ?? 'N/A'}  [${extraction.pin.confidence}]`);
+    console.log(`  Place of Birth: ${extraction.placeOfBirth.value ?? 'N/A'}  [${extraction.placeOfBirth.confidence}]`);
     console.log(`  Overall       : ${extraction.overallConfidence.toUpperCase()}`);
     if (extraction.fieldsNeedingReview.length > 0) {
       console.log(`  Needs review  : ${extraction.fieldsNeedingReview.join(', ')}`);

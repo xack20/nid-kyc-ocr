@@ -30,9 +30,6 @@ export const NidResultSchema = z.object({
   issueDate:    FieldResult,   // প্রদানের তারিখ / Issue Date (all variants)
 
   // ── Smart NID back only ───────────────────────────────────
-  pin:          FieldResult,   // PIN (smart NID back)
-
-  // ── Smart NID back only ───────────────────────────────────
   placeOfBirth: FieldResult,   // Place of Birth (smart NID back — English)
 
   // ── Temporary NID only ────────────────────────────────────

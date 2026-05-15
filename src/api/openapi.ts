@@ -36,7 +36,6 @@ const nidResult = {
     bloodGroup:   { ...fieldResult, description: 'Blood group — e.g. A+, O-, AB+' },
     issueDate:    { ...fieldResult, description: 'Card issue date (প্রদানের তারিখ / Issue Date)' },
     // Smart NID back only
-    pin:          { ...fieldResult, description: 'PIN — Smart NID back only. Null for laminated/temporary.' },
     placeOfBirth: { ...fieldResult, description: 'Place of Birth — Smart NID back only (English). Null for laminated/temporary.' },
     // Temporary NID only
     validUntil:   { ...fieldResult, description: 'Validity/expiry date — Temporary NID only (বৈধতার মেয়াদ). Null for smart/laminated.' },
@@ -103,7 +102,7 @@ export const openApiSpec = {
       '## NID Field Layout',
       '**Front (both variants):** nidNumber, nameEn, nameBn, dateOfBirth, fatherNameBn, motherNameBn',
       '**Back (both variants):** addressBn, bloodGroup, issueDate',
-      '**Smart NID back only:** pin',
+      '**Smart NID back only:** placeOfBirth',
     ].join('\n'),
     contact: { email: 'sharafat.hossain@konasl.com' },
   },
@@ -194,7 +193,7 @@ export const openApiSpec = {
                     addressBn:    { value: 'গ্রাম/রাস্তা: নমুনা সড়ক, ডাকঘর: নমুনা - ১৭০৩, নমুনা জেলা', confidence: 'high', needsReview: false },
                     bloodGroup:   { value: null,        confidence: 'unreadable', needsReview: false },
                     issueDate:    { value: '09/09/2013', confidence: 'high', needsReview: false },
-                    pin:          { value: null,         confidence: 'unreadable', needsReview: false },
+
                     overallConfidence: 'high',
                     fieldsNeedingReview: [],
                   },
