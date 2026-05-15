@@ -14,20 +14,32 @@ const nidResult = {
   type:       'object',
   description: 'Structured NID fields. Absent when mode is vision_only.',
   properties: {
-    cardType:            { type: 'string', enum: ['smart', 'laminated', 'unknown'], description: 'Detected NID card variant' },
-    // Front side — both variants
-    nidNumber:           { ...fieldResult, description: 'NID number (10, 13, or 17 digits)' },
-    nameEn:              { ...fieldResult, description: 'Holder name in English' },
-    nameBn:              { ...fieldResult, description: 'Holder name in Bengali (নাম)' },
-    dateOfBirth:         { ...fieldResult, description: 'Date of birth — DD MMM YYYY format' },
-    fatherNameBn:        { ...fieldResult, description: "Father's name in Bengali (পিতা)" },
-    motherNameBn:        { ...fieldResult, description: "Mother's name in Bengali (মাতা)" },
-    // Back side — both variants
-    addressBn:           { ...fieldResult, description: 'Full address in Bengali (ঠিকানা)' },
-    bloodGroup:          { ...fieldResult, description: 'Blood group (রক্তের গ্রুপ)' },
-    issueDate:           { ...fieldResult, description: 'Card issue date (প্রদানের তারিখ)' },
+    cardType: {
+      type: 'string',
+      enum: ['smart', 'laminated', 'temporary', 'unknown'],
+      description: [
+        '`laminated` — old paper card sealed in plastic (pre-2016), 13 or 17-digit NID',
+        '`smart` — plastic card with chip (2016+), 10-digit NID, MRZ on back',
+        '`temporary` — সাময়িক জাতীয় পরিচয়পত্র paper form with validity date',
+        '`unknown` — could not determine variant',
+      ].join('\n'),
+    },
+    // Front side — all variants
+    nidNumber:    { ...fieldResult, description: 'NID number — 10 (smart), 13, or 17 digits (laminated/temporary). Spaces stripped.' },
+    nameEn:       { ...fieldResult, description: 'Holder name in English' },
+    nameBn:       { ...fieldResult, description: 'Holder name in Bengali (নাম)' },
+    dateOfBirth:  { ...fieldResult, description: 'Date of birth — DD MMM YYYY format' },
+    fatherNameBn: { ...fieldResult, description: "Father's name in Bengali (পিতা)" },
+    motherNameBn: { ...fieldResult, description: "Mother's name in Bengali (মাতা)" },
+    // Back side — all variants
+    addressBn:    { ...fieldResult, description: 'Full address in Bengali (ঠিকানা)' },
+    bloodGroup:   { ...fieldResult, description: 'Blood group — e.g. A+, O-, AB+' },
+    issueDate:    { ...fieldResult, description: 'Card issue date (প্রদানের তারিখ / Issue Date)' },
     // Smart NID back only
-    pin:                 { ...fieldResult, description: 'PIN — Smart NID back side only' },
+    pin:          { ...fieldResult, description: 'PIN — Smart NID back only. Null for laminated/temporary.' },
+    placeOfBirth: { ...fieldResult, description: 'Place of Birth — Smart NID back only (English). Null for laminated/temporary.' },
+    // Temporary NID only
+    validUntil:   { ...fieldResult, description: 'Validity/expiry date — Temporary NID only (বৈধতার মেয়াদ). Null for smart/laminated.' },
     overallConfidence:   { type: 'string', enum: ['high', 'medium', 'low'] },
     fieldsNeedingReview: { type: 'array', items: { type: 'string' }, description: 'List of field keys where needsReview is true' },
   },

@@ -8,7 +8,7 @@
  */
 
 const VALID_CONFIDENCE = new Set(['high', 'low', 'unreadable']);
-const VALID_CARD_TYPES  = new Set(['smart', 'laminated', 'unknown']);
+const VALID_CARD_TYPES  = new Set(['smart', 'laminated', 'temporary', 'unknown']);
 const VALID_OVERALL     = new Set(['high', 'medium', 'low']);
 
 function normalizeField(field: unknown): unknown {
@@ -42,7 +42,7 @@ export function normalizeNidJson(raw: unknown): unknown {
   const fieldKeys = [
     'nidNumber', 'nameEn', 'nameBn', 'dateOfBirth',
     'fatherNameBn', 'motherNameBn', 'addressBn',
-    'bloodGroup', 'issueDate', 'pin',
+    'bloodGroup', 'issueDate', 'pin', 'placeOfBirth', 'validUntil',
   ];
 
   for (const key of fieldKeys) {

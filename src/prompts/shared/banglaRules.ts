@@ -64,4 +64,17 @@ Three OCR failure modes — restore in all cases:
   গণপ্রজাতন্ত্রী বাংলাদেশ সরকার জাতীয় পরিচয়পত্র
   বাসা হোল্ডিং গ্রাম রাস্তা ডাকঘর উপজেলা জেলা
   সিটি কর্পোরেশন পৌরসভা ইউনিয়ন
-  উত্তরা নমুনা ঢাকা চট্টগ্রাম সিলেট রাজশাহী খুলনা`;
+  উত্তরা নমুনা ঢাকা চট্টগ্রাম সিলেট রাজশাহী খুলনা
+
+── L. Smart NID-specific OCR issues ─────────────────────────────
+  Smart NID field labels are TINY printed above the value — OCR often merges
+  the label with the value or reads them on the same line:
+    "নামMD. SAMPLE USER" → label "নাম" + nameBn on next line + nameEn
+    "NID No1234567890"    → strip "NID No" prefix, digits only
+  NID number on smart card has spaces: "123 456 7890" → extract as "1234567890"
+
+  MRZ lines on smart NID back (3 lines starting with "I<BGD"):
+    IGNORE these entirely. Do not extract any field from them.
+    Example: "I<BGD123456789<55<<<<<<<<<<<<<"  → skip
+             "9308042M3106187BGD<<<<<<<<<<<2"  → skip
+             "USER<<MD<SAMPLE<<<<<<<<<<<<<<"  → skip`;
