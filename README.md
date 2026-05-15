@@ -1,6 +1,6 @@
 # KYC OCR — Bangladeshi NID Card Extraction
 
-Extracts structured fields from Bangladeshi National ID (NID) cards using **Gemini** and/or **Google Cloud Vision**. Supports both laminated (old) and smart card variants, front-only or front+back pairs, and five configurable extraction strategies.
+Extracts structured fields from Bangladeshi National ID (NID) cards using **Gemini** and/or **Google Cloud Vision**. Supports laminated, smart, and temporary NID variants, front-only or front+back pairs, and seven configurable extraction strategies.
 
 ---
 
@@ -57,7 +57,7 @@ GEMINI_MODEL=gemini-3.1-pro-preview
 |---|---|
 | `gemini-3.1-pro-preview` | Latest, cutting-edge — **default** |
 | `gemini-2.5-pro` | Stable, highest accuracy |
-| `gemini-2.5-flash` | Fast, lower cost |
+| `gemini-3.1-flash-lite` | Fast, lightweight Tier-1 parser |
 | `gemini-3-flash-preview` | Fast, latest generation |
 
 Change the active model by setting `GEMINI_MODEL` in `.env`. Unknown values fall back to the default with a console warning.
@@ -70,15 +70,23 @@ Change the active model by setting `GEMINI_MODEL` in `.env`. Unknown values fall
 |---|---|---|---|
 | `gemini_only` | No | Direct image read | Speed, no CV quota usage |
 | `vision_only` | Yes | No | Debugging raw OCR quality |
+| `vision_to_gemini` | Yes (text only) | Text prompt only | Cheapest structured output, zero Gemini image tokens |
 | `vision_fed_gemini` | Pre-call | Context only | Structured output without function-call quota |
 | `gemini_with_vision_tool` | On-demand | Tool loop | Gemini decides when to invoke OCR |
 | `combined` | Always + tool | Full loop | **Maximum accuracy** (default) |
+| `smart` | Rich CV + targeted crops | Tier-1 text parse + Tier-2 visual verify | Adaptive maximum accuracy with lower Pro usage |
 
 **`combined` strategy flow:**
 1. Cloud Vision runs on all images in parallel (guaranteed first pass)
 2. CV raw text is passed as context to Gemini
 3. Cloud Vision is also registered as a callable function tool for re-verification
 4. Gemini extracts and cross-verifies all fields; disagreements are flagged `needsReview: true`
+
+**`smart` strategy flow:**
+1. Cloud Vision returns rich OCR lines with confidence and bounding boxes.
+2. Gemini Flash Lite parses CV text only into labeled fields.
+3. Validators route low-confidence or invalid fields to Pro vision.
+4. Pro sees original images plus targeted crops only for uncertain fields.
 
 ---
 
@@ -138,7 +146,8 @@ curl -X POST http://localhost:3000/extract \
     "addressBn":    { "value": "গ্রাম/রাস্তা: ...", "confidence": "high", "needsReview": false },
     "bloodGroup":   { "value": null,                 "confidence": "unreadable", "needsReview": false },
     "issueDate":    { "value": "09/09/2013",          "confidence": "high", "needsReview": false },
-    "pin":          { "value": null,                 "confidence": "unreadable", "needsReview": false },
+    "placeOfBirth": { "value": null,                  "confidence": "unreadable", "needsReview": false },
+    "validUntil":   { "value": null,                  "confidence": "unreadable", "needsReview": false },
     "overallConfidence": "high",
     "fieldsNeedingReview": []
   },
@@ -344,7 +353,13 @@ Output: console table + `outputs/benchmark_gemini_only_<timestamp>.json`.
 
 | Field | Description |
 |---|---|
-| `pin` | Personal Identification Number |
+| `placeOfBirth` | Place of birth, printed on smart NID back side |
+
+### Temporary NID only
+
+| Field | Description |
+|---|---|
+| `validUntil` | Validity/expiry date for temporary NID documents |
 
 ### Per-field result shape
 
@@ -408,9 +423,9 @@ src/
 ├── config/           Environment config + model registry
 ├── core/             Shared types, Zod schema, StepTimer
 ├── providers/        Lazy singletons — Gemini client, Cloud Vision client
-├── prompts/          NID system instruction (card format + parsing rules)
-├── strategies/       Five extraction strategies + factory
-├── utils/            MIME helpers, timestamp, JSON extractor
+├── prompts/          Shared + mode-specific prompts
+├── strategies/       Extraction strategies + factory, including smart mode
+├── utils/            MIME, timestamp, JSON, validation, crop helpers
 ├── api/              Express routes, middleware, OpenAPI spec
 ├── server.ts         App factory
 └── index.ts          Entry point

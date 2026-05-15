@@ -85,6 +85,8 @@ async function main() {
           addressBn:           e.addressBn.value,
           bloodGroup:          e.bloodGroup.value,
           issueDate:           e.issueDate.value,
+          placeOfBirth:        e.placeOfBirth.value,
+          validUntil:          e.validUntil.value,
           fieldsNeedingReview: e.fieldsNeedingReview,
         } : {}),
       });

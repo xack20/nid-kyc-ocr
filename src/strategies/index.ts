@@ -6,10 +6,12 @@ import { VisionToGeminiStrategy }       from './visionToGemini.js';
 import { VisionFedGeminiStrategy }      from './visionFedGemini.js';
 import { GeminiWithVisionToolStrategy } from './geminiWithVisionTool.js';
 import { CombinedStrategy }             from './combined.js';
+import { SmartStrategy }                from './smart.js';
 
 export type { IExtractionStrategy };
 export { GeminiOnlyStrategy, VisionOnlyStrategy, VisionToGeminiStrategy,
-         VisionFedGeminiStrategy, GeminiWithVisionToolStrategy, CombinedStrategy };
+         VisionFedGeminiStrategy, GeminiWithVisionToolStrategy, CombinedStrategy,
+         SmartStrategy };
 
 /** Returns the strategy instance for the given mode. */
 export function createStrategy(mode: ExtractionMode): IExtractionStrategy {
@@ -20,5 +22,6 @@ export function createStrategy(mode: ExtractionMode): IExtractionStrategy {
     case 'vision_fed_gemini':        return new VisionFedGeminiStrategy();
     case 'gemini_with_vision_tool':  return new GeminiWithVisionToolStrategy();
     case 'combined':                 return new CombinedStrategy();
+    case 'smart':                    return new SmartStrategy();
   }
 }

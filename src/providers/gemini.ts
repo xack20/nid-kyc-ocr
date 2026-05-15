@@ -88,7 +88,11 @@ export function getFunctionCallStep(
  * @returns The file URI (e.g. "https://generativelanguage.googleapis.com/v1beta/files/abc123")
  */
 export async function uploadToFilesApi(buffer: Buffer, mimeType: string): Promise<string> {
-  const blob = new Blob([buffer as unknown as ArrayBuffer], { type: mimeType });
+  const arrayBuffer = buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength,
+  ) as ArrayBuffer;
+  const blob = new Blob([arrayBuffer], { type: mimeType });
   const file = await geminiClient().files.upload({
     file:   blob,
     config: { mimeType },

@@ -4,7 +4,8 @@
  * Usage:
  *   npx tsx scripts/runOne.ts --front <path> [--back <path>] [--mode <mode>]
  *
- * Modes: gemini_only | vision_only | vision_fed_gemini | gemini_with_vision_tool | combined (default)
+ * Modes: gemini_only | vision_only | vision_to_gemini | vision_fed_gemini |
+ *        gemini_with_vision_tool | combined | smart
  */
 import 'dotenv/config';
 import { readFile, writeFile, mkdir } from 'fs/promises';

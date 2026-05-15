@@ -34,6 +34,12 @@ export const config = {
     model:         resolveModel(),
     thinkingLevel: (process.env.GEMINI_THINKING_LEVEL ?? 'high') as ThinkingLevel,
   },
+  smart: {
+    tier1Model:             (process.env.SMART_TIER1_MODEL ?? 'gemini-3.1-flash-lite') as GeminiModel,
+    tier2Model:             (process.env.SMART_TIER2_MODEL ?? process.env.GEMINI_MODEL ?? DEFAULT_MODEL) as GeminiModel,
+    cvConfidenceThreshold:  parseFloat(process.env.SMART_CV_CONF_THRESHOLD ?? '0.85'),
+    maxTier2Fields:         parseInt(process.env.SMART_MAX_TIER2_FIELDS ?? '8', 10),
+  },
   google: {
     credentials: process.env.GOOGLE_APPLICATION_CREDENTIALS,
   },

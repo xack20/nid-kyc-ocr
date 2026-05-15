@@ -10,6 +10,7 @@ export const EXTRACTION_MODES = [
   'vision_fed_gemini',
   'gemini_with_vision_tool',
   'combined',
+  'smart',
 ] as const;
 
 export type ExtractionMode = (typeof EXTRACTION_MODES)[number];

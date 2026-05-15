@@ -102,6 +102,8 @@ async function main() {
         console.log(`  Addr  : ${extraction.addressBn.value ?? 'N/A'}  [${extraction.addressBn.confidence}]`);
         console.log(`  Blood : ${extraction.bloodGroup.value ?? 'N/A'}  [${extraction.bloodGroup.confidence}]`);
         console.log(`  Issue : ${extraction.issueDate.value ?? 'N/A'}`);
+        console.log(`  Birth : ${extraction.placeOfBirth.value ?? 'N/A'}  [${extraction.placeOfBirth.confidence}]`);
+        console.log(`  Valid : ${extraction.validUntil.value ?? 'N/A'}  [${extraction.validUntil.confidence}]`);
         if (extraction.fieldsNeedingReview.length > 0) {
           console.log(`  Review: ${extraction.fieldsNeedingReview.join(', ')}`);
         }
@@ -117,13 +119,17 @@ async function main() {
       const e = result.extraction;
       summary.push({
         pairId, status: 'ok', hasBothSides: !!backInfo,
+        timing,
         totalMs: timing.totalMs,
+        geminiCallCount,
+        tokenUsage: result.tokenUsage,
         ...(e ? {
           cardType: e.cardType, overallConfidence: e.overallConfidence,
           nidNumber: e.nidNumber.value, nameEn: e.nameEn.value, nameBn: e.nameBn.value,
           dateOfBirth: e.dateOfBirth.value, fatherNameBn: e.fatherNameBn.value,
           motherNameBn: e.motherNameBn.value, addressBn: e.addressBn.value,
           bloodGroup: e.bloodGroup.value, issueDate: e.issueDate.value,
+          placeOfBirth: e.placeOfBirth.value, validUntil: e.validUntil.value,
           fieldsNeedingReview: e.fieldsNeedingReview,
         } : {
           // vision_only — include raw OCR text in summary
@@ -140,7 +146,7 @@ async function main() {
     }
   }
 
-  const summaryFile = join(OUTPUT_DIR, '_summary.json`');
+  const summaryFile = join(OUTPUT_DIR, '_summary.json');
   await writeFile(summaryFile, JSON.stringify(summary, null, 2), 'utf-8');
 
   const ok = summary.filter((r: any) => r.status === 'ok').length;

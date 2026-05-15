@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Purpose
 
-KYC OCR service that extracts structured fields from Bangladeshi NID cards (both laminated and smart variants), targeting maximum accuracy using Gemini and/or Google Cloud Vision.
+KYC OCR service that extracts structured fields from Bangladeshi NID cards (laminated, smart, and temporary variants), targeting maximum accuracy using Gemini and/or Google Cloud Vision.
 
 ## Commands
 
@@ -29,12 +29,17 @@ src/
 ├── core/
 │   ├── types.ts              # ExtractionMode, NidImage, ExtractionResult, VisionOutput
 │   ├── models.ts             # Zod NidResultSchema + NidResult type
+│   ├── smartTypes.ts         # Smart mode line records, routing, Tier-1 result types
 │   └── timer.ts              # StepTimer — per-step timing with summary()
 ├── providers/
 │   ├── gemini.ts             # GoogleGenAI singleton + response helpers
 │   └── vision.ts             # Cloud Vision singleton + extractWithCloudVision()
 ├── prompts/
-│   └── system.ts             # NID card format + parsing rules system instruction
+│   ├── shared/               # NID format, Bengali OCR rules, output schema
+│   ├── geminiOnly.ts         # Image-only prompt
+│   ├── visionToGemini.ts     # CV text-only prompt
+│   ├── smartTier1.ts         # Smart mode CV text parser prompt
+│   └── smartTier2.ts         # Smart mode targeted visual verifier prompt
 ├── strategies/               # Strategy pattern — one class per extraction mode
 │   ├── IExtractionStrategy.ts
 │   ├── geminiOnly.ts         # Gemini reads images directly, no Cloud Vision
@@ -42,11 +47,14 @@ src/
 │   ├── visionFedGemini.ts    # CV runs first, its text fed to Gemini as context
 │   ├── geminiWithVisionTool.ts # CV registered as Gemini function tool
 │   ├── combined.ts           # CV always runs + registered as tool (max accuracy)
+│   ├── smart.ts              # Rich CV + Tier-1 text parse + targeted Tier-2 verification
 │   └── index.ts              # createStrategy(mode) factory
 ├── utils/
 │   ├── mime.ts               # MIME type helpers + toImageMimeType()
 │   ├── timestamp.ts          # ts() — filesystem-safe timestamp string
-│   └── json.ts               # extractJson() — pulls first JSON object from text
+│   ├── json.ts               # extractJson() — pulls first JSON object from text
+│   ├── imageCrop.ts          # sharp-based crop helper for smart mode
+│   └── fieldValidators.ts    # deterministic validation/routing checks
 ├── api/
 │   ├── middleware/upload.ts  # Multer config
 │   ├── middleware/errorHandler.ts
@@ -73,14 +81,17 @@ scripts/                      # CLI runners (tsx, not compiled)
 | `vision_fed_gemini` | Yes (pre-call) | Image + text context | No function-call quota |
 | `gemini_with_vision_tool` | On-demand | Tool loop | Gemini decides when to OCR |
 | `combined` | Always + tool | Full loop | Maximum accuracy (default) |
+| `smart` | Rich CV + targeted crops | Tier-1 text parser + Tier-2 visual verifier | Adaptive max accuracy with less Pro usage |
 
 ## NID Field Layout
 
-**Front (both variants):** `nidNumber`, `nameEn`, `nameBn`, `dateOfBirth`, `fatherNameBn` (পিতা), `motherNameBn` (মাতা)
+**Front (all variants):** `nidNumber`, `nameEn`, `nameBn`, `dateOfBirth`, `fatherNameBn` (পিতা), `motherNameBn` (মাতা)
 
-**Back (both variants):** `addressBn` (ঠিকানা), `bloodGroup`, `issueDate` (প্রদানের তারিখ)
+**Back (all variants):** `addressBn` (ঠিকানা), `bloodGroup`, `issueDate` (প্রদানের তারিখ)
 
-**Smart NID back only:** `pin`
+**Smart NID back only:** `placeOfBirth`
+
+**Temporary NID only:** `validUntil`
 
 ## API Endpoints
 

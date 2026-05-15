@@ -85,6 +85,7 @@ const modeDescriptions: Record<string, string> = {
   vision_fed_gemini:        'Cloud Vision runs first; image + CV text are both sent to Gemini as context. Gemini cross-verifies its own image read against the CV text.',
   gemini_with_vision_tool:  'Gemini receives images and a Cloud Vision function tool. Gemini decides when to invoke it for uncertain fields. JSON output enforced via response_format.',
   combined:                 'Cloud Vision always runs first (guaranteed pre-pass) AND is registered as a re-call tool. Maximum accuracy. JSON output enforced via response_format.',
+  smart:                    'Adaptive pipeline: rich Cloud Vision scan, Tier-1 text-only Gemini parse, deterministic validators, then Tier-2 Pro visual verification only for uncertain fields/crops.',
 };
 
 export const openApiSpec = {
@@ -93,16 +94,17 @@ export const openApiSpec = {
     title:       'KYC OCR API',
     version:     '3.0.0',
     description: [
-      'Extracts structured fields from Bangladeshi NID cards (laminated and smart variants).',
+      'Extracts structured fields from Bangladeshi NID cards (laminated, smart, and temporary variants).',
       'Uses Gemini Interactions API and/or Google Cloud Vision depending on the selected extraction mode.',
       '',
       '## Extraction Modes',
       Object.entries(modeDescriptions).map(([k, v]) => `- **\`${k}\`** — ${v}`).join('\n'),
       '',
       '## NID Field Layout',
-      '**Front (both variants):** nidNumber, nameEn, nameBn, dateOfBirth, fatherNameBn, motherNameBn',
-      '**Back (both variants):** addressBn, bloodGroup, issueDate',
+      '**Front (all variants):** nidNumber, nameEn, nameBn, dateOfBirth, fatherNameBn, motherNameBn',
+      '**Back (all variants):** addressBn, bloodGroup, issueDate',
       '**Smart NID back only:** placeOfBirth',
+      '**Temporary NID only:** validUntil',
     ].join('\n'),
     contact: { email: 'sharafat.hossain@konasl.com' },
   },
@@ -193,7 +195,8 @@ export const openApiSpec = {
                     addressBn:    { value: 'গ্রাম/রাস্তা: নমুনা সড়ক, ডাকঘর: নমুনা - ১৭০৩, নমুনা জেলা', confidence: 'high', needsReview: false },
                     bloodGroup:   { value: null,        confidence: 'unreadable', needsReview: false },
                     issueDate:    { value: '09/09/2013', confidence: 'high', needsReview: false },
-
+                    placeOfBirth: { value: null,         confidence: 'unreadable', needsReview: false },
+                    validUntil:   { value: null,         confidence: 'unreadable', needsReview: false },
                     overallConfidence: 'high',
                     fieldsNeedingReview: [],
                   },
