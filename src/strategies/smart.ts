@@ -92,6 +92,17 @@ export class SmartStrategy implements IExtractionStrategy {
     const uploadedUris: string[] = [];
 
     try {
+      // Start background upload of original images immediately to eliminate network block time
+      const originalUrisPromise = Promise.all(
+        images.map(async (img) => {
+          const uri = await uploadToFilesApi(img.buffer, img.mimeType);
+          uploadedUris.push(uri);
+          return uri;
+        })
+      ).catch(err => {
+        throw err;
+      });
+
       const richResults = await Promise.all(
         images.map(async (img) => {
           const stop = timer.start(`vision_${img.side}`);
@@ -245,6 +256,11 @@ export class SmartStrategy implements IExtractionStrategy {
       const verifyFieldSet = new Set(verify.map(d => d.field));
 
       if (verify.length === 0 && tier1) {
+        // Quietly delete the background uploaded original images
+        originalUrisPromise.then(uris => {
+          uris.forEach(deleteFromFilesApi);
+        }).catch(() => {});
+
         return {
           mode: this.mode,
           extraction: withReviewList({ ...tier1.extraction, qualityIssues: [] }),
@@ -255,8 +271,9 @@ export class SmartStrategy implements IExtractionStrategy {
         };
       }
 
-      const originalUris = await uploadOriginalImages(images, timer);
-      uploadedUris.push(...originalUris);
+      const uploadStop = timer.start('files_upload_originals');
+      const originalUris = await originalUrisPromise;
+      uploadStop();
 
       // Glare-aware verify loop:
       //  - Bbox known + bbox overlaps glare → render crop from a CLAHE-enhanced source.
@@ -284,7 +301,12 @@ export class SmartStrategy implements IExtractionStrategy {
         return uri;
       };
 
-      for (const decision of verify) {
+      // Process all verify decisions concurrently using Promise.all
+      const verifyPromises = verify.map(async (decision) => {
+        const localParts: Interactions.Content[] = [];
+        const localIssues: string[] = [];
+        const localUris: string[] = [];
+
         // ── Gap-detected path: send THREE enhancement variants so Tier-2 has the
         // best chance to detect partial letter strokes in the obliterated zone.
         //   variant 1 (raw)        — original pixels, no processing
@@ -294,21 +316,20 @@ export class SmartStrategy implements IExtractionStrategy {
         if (gapReport && providedSides.has(gapReport.side)) {
           const image = findImageForSide(images, gapReport.side);
           if (image) {
+            // CROP FIRST: crop the raw bounding box first (tiny buffer)
+            const cropStop = timer.start('crop_field');
+            const rawCrop = await cropImageByBox(image.buffer, gapReport.fullCropBbox, 0.15);
+            cropStop();
+
+            // ENHANCE SECOND: apply enhancements directly on the tiny crop buffer
             const enhStop = timer.start('enhance_image');
-            const [aggressiveBuf, negatedBuf] = await Promise.all([
-              enhanceForGapRecovery(image.buffer),
-              enhanceNegatedForGap(image.buffer),
+            const [aggressiveCrop, negatedCrop] = await Promise.all([
+              enhanceForGapRecovery(rawCrop),
+              enhanceNegatedForGap(rawCrop),
             ]);
             enhStop();
 
-            const cropStop = timer.start('crop_field');
-            const [rawCrop, aggressiveCrop, negatedCrop] = await Promise.all([
-              cropImageByBox(image.buffer,    gapReport.fullCropBbox, 0.15),
-              cropImageByBox(aggressiveBuf,   gapReport.fullCropBbox, 0.15),
-              cropImageByBox(negatedBuf,      gapReport.fullCropBbox, 0.15),
-            ]);
-            cropStop();
-
+            // UPLOAD CONCURRENTLY: upload all 3 variants at once
             const upStop = timer.start('files_upload_crops');
             const [uriRaw, uriAgg, uriNeg] = await Promise.all([
               uploadToFilesApi(rawCrop,        'image/jpeg'),
@@ -316,11 +337,12 @@ export class SmartStrategy implements IExtractionStrategy {
               uploadToFilesApi(negatedCrop,    'image/jpeg'),
             ]);
             upStop();
-            uploadedUris.push(uriRaw, uriAgg, uriNeg);
-            qualityIssues.push(`gap_${decision.field}`);
+
+            localUris.push(uriRaw, uriAgg, uriNeg);
+            localIssues.push(`gap_${decision.field}`);
 
             const gapLabel = `[GAP DETECTED] field=${decision.field}, side=${gapReport.side}, gap=${gapReport.gapPx}px`;
-            cropParts.push(
+            localParts.push(
               { type: 'text', text: `${gapLabel} — RAW crop (original pixels)` } satisfies Interactions.TextContent,
               { type: 'image', uri: uriRaw } satisfies Interactions.ImageContent,
               { type: 'text', text: `${gapLabel} — AGGRESSIVE crop (CLAHE 20px + gamma 2.4; amplifies partial strokes)` } satisfies Interactions.TextContent,
@@ -328,7 +350,8 @@ export class SmartStrategy implements IExtractionStrategy {
               { type: 'text', text: `${gapLabel} — NEGATED crop (glare→dark, strokes→bright; look for ৎ/ত at right edge of dark zone)` } satisfies Interactions.TextContent,
               { type: 'image', uri: uriNeg } satisfies Interactions.ImageContent,
             );
-            continue;
+
+            return { parts: localParts, issues: localIssues, uris: localUris };
           }
         }
 
@@ -336,10 +359,10 @@ export class SmartStrategy implements IExtractionStrategy {
         const source = decision.source;
         const targetSide: NidImage['side'] | null =
           source?.side ?? expectedSideForField(decision.field, cardTypeForRouting);
-        if (!targetSide || !providedSides.has(targetSide)) continue;
+        if (!targetSide || !providedSides.has(targetSide)) return { parts: [], issues: [], uris: [] };
 
         const image = findImageForSide(images, targetSide);
-        if (!image) continue;
+        if (!image) return { parts: [], issues: [], uris: [] };
 
         const box = source && source.lineIds.length > 0
           ? mergeBoundingBoxes(findLineBoxes(allLines, source.lineIds))
@@ -350,23 +373,28 @@ export class SmartStrategy implements IExtractionStrategy {
         const sideHasGlare  = (glare?.coverage ?? 0) > 0.005;
         const useEnhanced   = box ? overlapsGlare : sideHasGlare;
 
-        if (useEnhanced) qualityIssues.push(`glare_${decision.field}`);
+        if (useEnhanced) localIssues.push(`glare_${decision.field}`);
 
         if (box) {
-          let sourceBuf = image.buffer;
+          // CROP FIRST: crop raw bounding box first
+          const cropStop = timer.start('crop_field');
+          let crop = await cropImageByBox(image.buffer, box);
+          cropStop();
+
+          // ENHANCE SECOND: enhance standard crop only if needed
           if (useEnhanced) {
             const enhStop = timer.start('enhance_image');
-            sourceBuf = await enhanceForGlareRecovery(image.buffer);
+            crop = await enhanceForGlareRecovery(crop);
             enhStop();
           }
-          const cropStop = timer.start('crop_field');
-          const crop = await cropImageByBox(sourceBuf, box);
-          cropStop();
+
+          // UPLOAD CONCURRENTLY
           const upStop = timer.start('files_upload_crops');
           const cropUri = await uploadToFilesApi(crop, 'image/jpeg');
           upStop();
-          uploadedUris.push(cropUri);
-          cropParts.push(
+
+          localUris.push(cropUri);
+          localParts.push(
             {
               type: 'text',
               text: `${useEnhanced ? '[ENHANCED] ' : ''}Crop for field=${decision.field}, side=${targetSide}, reason=${decision.reason}`,
@@ -376,7 +404,7 @@ export class SmartStrategy implements IExtractionStrategy {
         } else if (useEnhanced) {
           const enhancedUri = await ensureEnhancedSide(targetSide);
           if (enhancedUri) {
-            cropParts.push(
+            localParts.push(
               {
                 type: 'text',
                 text: `[ENHANCED] Full ${targetSide} side — field=${decision.field} missing from OCR; ${((glare?.coverage ?? 0) * 100).toFixed(1)}% glare coverage`,
@@ -385,13 +413,26 @@ export class SmartStrategy implements IExtractionStrategy {
             );
           }
         }
+
+        return { parts: localParts, issues: localIssues, uris: localUris };
+      });
+
+      const verifyResults = await Promise.all(verifyPromises);
+
+      for (const res of verifyResults) {
+        cropParts.push(...res.parts);
+        qualityIssues.push(...res.issues);
+        uploadedUris.push(...res.uris);
       }
 
       const tier2Stop = timer.start('gemini_tier2_visual_verify');
       const tier2Interaction = await geminiClient().interactions.create({
         model:              config.smart.tier2Model,
         system_instruction: SMART_TIER2_PROMPT,
-        generation_config:  generationConfigTool,
+        generation_config:  {
+          ...generationConfigTool,
+          thinking_level: config.smart.tier2ThinkingLevel,
+        },
         response_format:    {
           type: 'text',
           mime_type: 'application/json',
