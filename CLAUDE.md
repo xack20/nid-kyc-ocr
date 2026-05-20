@@ -14,12 +14,14 @@ npm run build            # Compile TypeScript to dist/
 npm run extract          # Alias for scripts/runOne.ts
 npm run batch            # Alias for scripts/batch.ts
 npm run batch:special    # Alias for scripts/batchSpecial.ts
+npm run batch:recursive  # Alias for scripts/batchRecursive.ts
 
 # CLI scripts (direct)
 npx tsx scripts/runOne.ts --image <path> [--mode <mode>]            # auto-detect side
 npx tsx scripts/runOne.ts --front <path> [--back <path>] [--mode <mode>]   # explicit side
 npx tsx scripts/batch.ts [--dir <path>] [--mode <mode>]
 npx tsx scripts/batchSpecial.ts [--dir <path>] [--mode <mode>]
+npx tsx scripts/batchRecursive.ts [--dir <path>] [--mode <mode>]
 ```
 
 ## Architecture
@@ -75,7 +77,8 @@ src/
 scripts/                      # CLI runners (tsx, not compiled)
 ├── runOne.ts                 # Single image or front+back pair
 ├── batch.ts                  # Directory of front-only images
-└── batchSpecial.ts           # Numbered subdirs with front+back pairs
+├── batchSpecial.ts           # Numbered subdirs with front+back pairs
+└── batchRecursive.ts         # Recursively walk dirs (auto-detect sides)
 ```
 
 ## Extraction Modes
@@ -122,6 +125,7 @@ PORT=3000
 # Smart adaptive mode (optional overrides)
 SMART_TIER1_MODEL=gemini-3.1-flash-lite   # fast text parser
 SMART_TIER2_MODEL=gemini-3.1-pro-preview  # visual verifier (defaults to GEMINI_MODEL)
+SMART_TIER2_THINKING_LEVEL=medium         # Tier 2 thinking level: minimal|low|medium|high
 SMART_CV_CONF_THRESHOLD=0.85              # CV word confidence required to auto-pass a field
 SMART_MAX_TIER2_FIELDS=8                  # max fields sent for visual verification per run
 ```
