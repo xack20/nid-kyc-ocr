@@ -148,6 +148,9 @@ SMART_TIER1_MODEL=gemini-3.1-flash-lite
 # Tier 2 verifies uncertain fields visually.
 SMART_TIER2_MODEL=gemini-3.1-pro-preview
 
+# Tier 2 reasoning thinking level: minimal | low | medium | high
+SMART_TIER2_THINKING_LEVEL=medium
+
 # Minimum CV/source confidence required to skip Tier 2.
 SMART_CV_CONF_THRESHOLD=0.85
 
@@ -542,6 +545,22 @@ outputs/batch_<mode>_<timestamp>/
 └── _summary.json
 ```
 
+### Recursive Batch Directory
+
+Processes a directory of images recursively, walking all subfolders and auto-detecting the sides of each card automatically:
+
+```bash
+npm run batch:recursive -- --dir ./nid_images/nid_images --mode smart
+```
+
+Output:
+
+```text
+outputs/batch_recursive_<mode>_<timestamp>/
+├── <flattened_relative_path>.json
+└── _summary.json
+```
+
 ### Batch Front+Back Pairs
 
 Expected directory format:
@@ -698,12 +717,13 @@ Expected recent validation result:
 | `nid_images/special` | `smart` | all `overallConfidence: high` |
 | `nid_images/special` | `smart` | no fields needing review |
 
-Smart mode timing behavior from the latest run:
+Smart mode timing behavior after latency optimizations:
 
-| Case | Gemini calls | Typical total time |
-|---|---:|---:|
-| Clean smart card | 1 | ~7-8s |
-| Laminated cards needing targeted verification | 2 | ~30-44s |
+| Case | Gemini calls | Typical total time (Before) | Typical total time (After) | Latency Saved | Speedup % |
+|---|---:|---:|---:|---:|---:|
+| Clean smart / laminated card (Tier-1 pass) | 1 | ~6-7s | **~6-7s** | *0s* | *0%* |
+| Single-sided cards needing visual verifier | 2 | ~30-53s | **~20-29s** | **~10-24s** | **20% - 45%** |
+| Double-sided cards (full front + back verification) | 2 | ~54s | **~32s** | **~21s** | **39.5%** |
 
 ---
 
