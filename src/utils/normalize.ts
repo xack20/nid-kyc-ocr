@@ -56,5 +56,30 @@ export function normalizeNidJson(raw: unknown): unknown {
     }
   }
 
+  // Sanitize suggestions: drop malformed entries, trim candidates > 3, drop empties.
+  // If suggestions is not an object, reset to {} so Zod's .default() fills correctly.
+  if ('suggestions' in result) {
+    const rawSug = result['suggestions'];
+    if (rawSug === null || typeof rawSug !== 'object' || Array.isArray(rawSug)) {
+      result['suggestions'] = {};
+    } else {
+      const cleaned: Record<string, unknown> = {};
+      for (const [field, entry] of Object.entries(rawSug as Record<string, unknown>)) {
+        if (entry === null || typeof entry !== 'object') continue;
+        const e = entry as Record<string, unknown>;
+        const candidates = Array.isArray(e['candidates'])
+          ? (e['candidates'] as unknown[]).filter(c => typeof c === 'string' && c.trim().length > 0).slice(0, 3)
+          : [];
+        if (candidates.length === 0) continue;
+        const estimatedLength = typeof e['estimatedLength'] === 'number'
+          ? Math.max(0, Math.floor(e['estimatedLength'] as number))
+          : 0;
+        const partialVisible = typeof e['partialVisible'] === 'string' ? e['partialVisible'] : '';
+        cleaned[field] = { estimatedLength, partialVisible, candidates };
+      }
+      result['suggestions'] = cleaned;
+    }
+  }
+
   return result;
 }

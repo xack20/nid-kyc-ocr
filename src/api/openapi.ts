@@ -4,8 +4,8 @@ const fieldResult = {
   type:       'object',
   required:   ['value', 'confidence', 'needsReview'],
   properties: {
-    value:       { type: 'string', nullable: true, description: 'Extracted value, or null if unreadable/absent' },
-    confidence:  { type: 'string', enum: ['high', 'low', 'unreadable'], description: 'high = both sources agree | low = sources differ | unreadable = not found' },
+    value:       { type: 'string', nullable: true, description: 'Extracted value (or null if unreadable/absent). For gap-detected fields in smart mode, this contains the highest-confidence reconstructed candidate prefilled directly.' },
+    confidence:  { type: 'string', enum: ['high', 'low', 'unreadable'], description: 'high = both sources agree or clean single-read | low = sources differ or prefilled reconstruction candidate | unreadable = not found' },
     needsReview: { type: 'boolean', description: 'true when confidence is low or unreadable' },
   },
 };
@@ -45,6 +45,19 @@ const nidResult = {
       type: 'array',
       items: { type: 'string' },
       description: 'Smart-mode capture-quality hints (e.g. "glare_motherNameBn", "blur_addressBn"). Empty for non-smart modes and clean captures. Callers may use this to prompt the user to re-upload a better photo.',
+    },
+    suggestions: {
+      type:        'object',
+      description: 'Reviewer-facing candidate reconstructions for obliterated fields. Keyed by field name (e.g. "motherNameBn"). Populated only by smart mode when Tier-2 can identify partial-stroke evidence at the boundary of a gap-detected zone. In this mode, the highest-confidence (first) reconstruction is prefilled directly into the field\'s main `value` (marked with `confidence: "low"` and `needsReview: true`), and the up to three other alternative candidate reconstructions (if any) are placed in this object\'s `candidates` list. Empty `{}` for non-smart modes and clean captures. UIs typically render `candidates` as clickable chips for human review.',
+      additionalProperties: {
+        type:       'object',
+        required:   ['estimatedLength', 'partialVisible', 'candidates'],
+        properties: {
+          estimatedLength: { type: 'integer', minimum: 0, description: 'Estimated number of Bengali character clusters in the obliterated word.' },
+          partialVisible:  { type: 'string',  description: 'Short description of what is actually visible at the boundary (e.g. "ত at right edge of dark zone").' },
+          candidates:      { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 3, description: 'Up to 3 other alternative full-value reconstructions (excluding the highest-confidence candidate which is directly prefilled into the field\'s main `value`), ordered by model confidence.' },
+        },
+      },
     },
   },
 };
@@ -90,7 +103,7 @@ const modeDescriptions: Record<string, string> = {
   vision_fed_gemini:        'Cloud Vision runs first; image + CV text are both sent to Gemini as context. Gemini cross-verifies its own image read against the CV text.',
   gemini_with_vision_tool:  'Gemini receives images and a Cloud Vision function tool. Gemini decides when to invoke it for uncertain fields. JSON output enforced via response_format.',
   combined:                 'Cloud Vision always runs first (guaranteed pre-pass) AND is registered as a re-call tool. Maximum accuracy. JSON output enforced via response_format.',
-  smart:                    'Adaptive pipeline: rich Cloud Vision scan, Tier-1 text-only Gemini parse, deterministic validators, then Tier-2 Pro visual verification only for uncertain fields/crops.',
+  smart:                    'Adaptive pipeline: rich Cloud Vision scan, Tier-1 text-only Gemini parse, deterministic validators, then Tier-2 Pro visual verification only for uncertain fields/crops. Auto-detects single images that contain BOTH card sides stacked vertically and processes them as if both `front` and `back` were uploaded.',
 };
 
 export const openApiSpec = {
@@ -124,7 +137,14 @@ export const openApiSpec = {
     '/extract': {
       post: {
         summary:     'Extract NID fields from one or two card images',
-        description: 'Accepts a front image (required) and optional back image. Returns structured NID fields with per-field confidence scores and timing breakdown.',
+        description: [
+          'Accepts a single NID image (via `image`) or an explicit front/back pair (via `front` + optional `back`).',
+          '',
+          'Use `image` when you do not know whether the photo shows the front, the back, or contains both sides stacked — smart mode will auto-detect.',
+          'Use `front` + optional `back` when you know which side each file is.',
+          '',
+          '`front` and `image` are mutually exclusive. `back` is only valid with `front`.',
+        ].join('\n'),
         operationId: 'extractNid',
         tags:        ['Extraction'],
         requestBody: {
@@ -133,17 +153,22 @@ export const openApiSpec = {
             'multipart/form-data': {
               schema: {
                 type:       'object',
-                required:   ['front'],
+                description: 'Provide EITHER `front` (with optional `back`) OR `image`. Exactly one of `front` / `image` must be present.',
                 properties: {
                   front: {
                     type:        'string',
                     format:      'binary',
-                    description: 'Front-side NID image (required). Supported: JPEG, PNG, WEBP, HEIC, HEIF.',
+                    description: 'Explicit front-side NID image. Use when you know the photo is only the front. Mutually exclusive with `image`. Supported: JPEG, PNG, WEBP, HEIC, HEIF.',
                   },
                   back: {
                     type:        'string',
                     format:      'binary',
-                    description: 'Back-side NID image (optional). Provides address, blood group, issue date.',
+                    description: 'Back-side NID image (optional). Only valid alongside `front`. Provides address, blood group, issue date.',
+                  },
+                  image: {
+                    type:        'string',
+                    format:      'binary',
+                    description: 'Single NID image of unknown side — front, back, or both sides stacked vertically. Smart mode auto-detects. Mutually exclusive with `front`/`back`.',
                   },
                   mode: {
                     type:        'string',
@@ -175,7 +200,7 @@ export const openApiSpec = {
                       items: {
                         type:       'object',
                         properties: {
-                          side:      { type: 'string', enum: ['front', 'back', 'unknown'] },
+                          side:      { type: 'string', enum: ['front', 'back', 'unknown', 'combined'], description: '`combined` indicates smart-mode detected a single image containing both card sides' },
                           rawText:   { type: 'string', description: 'Full raw OCR text from Cloud Vision' },
                           timingMs:  { type: 'number', description: 'Cloud Vision call duration in ms' },
                         },
@@ -188,37 +213,44 @@ export const openApiSpec = {
                 },
                 example: {
                   success: true,
-                  mode: 'combined',
+                  mode: 'smart',
                   extraction: {
-                    cardType: 'laminated',
-                    nidNumber:    { value: '1234567890123', confidence: 'high', needsReview: false },
+                    cardType: 'smart',
+                    nidNumber:    { value: '1234567890',  confidence: 'high', needsReview: false },
                     nameEn:       { value: 'MD. SAMPLE USER', confidence: 'high', needsReview: false },
                     nameBn:       { value: 'মোঃ নমুনা ব্যবহারকারী', confidence: 'high', needsReview: false },
                     dateOfBirth:  { value: '01 Jan 1990', confidence: 'high', needsReview: false },
                     fatherNameBn: { value: 'মোঃ নমুনা পিতা', confidence: 'high', needsReview: false },
-                    motherNameBn: { value: 'মোসাঃ নমুনা মাতা', confidence: 'high', needsReview: false },
+                    motherNameBn: { value: 'মোসাঃ জিনাত বেগম', confidence: 'low',  needsReview: true },
                     addressBn:    { value: 'গ্রাম/রাস্তা: নমুনা সড়ক, ডাকঘর: নমুনা - ১২৩৪, নমুনা জেলা', confidence: 'high', needsReview: false },
-                    bloodGroup:   { value: null,        confidence: 'unreadable', needsReview: false },
-                    issueDate:    { value: '09/09/2013', confidence: 'high', needsReview: false },
-                    placeOfBirth: { value: null,         confidence: 'unreadable', needsReview: false },
+                    bloodGroup:   { value: 'O+',         confidence: 'high', needsReview: false },
+                    issueDate:    { value: '09/09/2018', confidence: 'high', needsReview: false },
+                    placeOfBirth: { value: 'Dhaka',       confidence: 'high', needsReview: false },
                     validUntil:   { value: null,         confidence: 'unreadable', needsReview: false },
-                    overallConfidence: 'high',
-                    fieldsNeedingReview: [],
+                    overallConfidence: 'medium',
+                    fieldsNeedingReview: ['motherNameBn'],
+                    qualityIssues: ['gap_motherNameBn', 'glare_motherNameBn'],
+                    suggestions: {
+                      motherNameBn: {
+                        estimatedLength: 5,
+                        partialVisible: 'ত at right edge of dark zone',
+                        candidates: ['মোসাঃ রাবেয়া বেগম', 'মোসাঃ সুফিয়া বেগম', 'মোসাঃ ফাতেমা বেগম']
+                      }
+                    }
                   },
                   visionOutputs: [
-                    { side: 'front', rawText: 'গণপ্রজাতন্ত্রী বাংলাদেশ সরকার\n...', timingMs: 1980 },
-                    { side: 'back',  rawText: 'ঠিকানা: গ্রাম/রাস্তা: নমুনা সড়ক...', timingMs: 2140 },
+                    { side: 'combined', rawText: 'গণপ্রজাতন্ত্রী বাংলাদেশ সরকার\n...', timingMs: 1980 }
                   ],
                   timing: {
                     steps: {
-                      vision_front:   { ms: 1980, formatted: '1.98s' },
-                      vision_back:    { ms: 2140, formatted: '2.14s' },
-                      gemini_initial: { ms: 27970, formatted: '27.97s' },
+                      vision_front:    { ms: 1980, formatted: '1.98s' },
+                      gemini_initial:  { ms: 1200, formatted: '1.20s' },
+                      gemini_tier2_motherNameBn: { ms: 3500, formatted: '3.50s' }
                     },
-                    visionTotalMs: 4120, geminiTotalMs: 27970, totalMs: 32090, totalFormatted: '32.09s',
+                    visionTotalMs: 1980, geminiTotalMs: 4700, totalMs: 6680, totalFormatted: '6.68s',
                   },
-                  geminiCallCount: 1,
-                  tokenUsage: { inputTokens: 2492, outputTokens: 401, totalTokens: 4490, thoughtTokens: 1597 },
+                  geminiCallCount: 2,
+                  tokenUsage: { inputTokens: 4200, outputTokens: 850, totalTokens: 5050, thoughtTokens: 0 },
                 },
               },
             },
@@ -235,8 +267,10 @@ export const openApiSpec = {
                   },
                 },
                 examples: {
-                  missingFront: { value: { success: false, error: 'Missing required field "front".' } },
-                  invalidMode:  { value: { success: false, error: 'Invalid mode "foo". Allowed: gemini_only, vision_only, ...' } },
+                  missingImage:  { value: { success: false, error: 'Missing image. Provide either "front" or "image" as multipart/form-data.' } },
+                  bothFrontAndImage: { value: { success: false, error: '"front" and "image" are mutually exclusive. Use one or the other.' } },
+                  backWithImage: { value: { success: false, error: '"back" can only accompany "front", not "image".' } },
+                  invalidMode:   { value: { success: false, error: 'Invalid mode "foo". Allowed: gemini_only, vision_only, ...' } },
                 },
               },
             },

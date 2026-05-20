@@ -9,6 +9,7 @@
     "extract": "NODE_OPTIONS=--disable-warning=DEP0040 tsx scripts/runOne.ts",
     "batch": "NODE_OPTIONS=--disable-warning=DEP0040 tsx scripts/batch.ts",
     "batch:special": "NODE_OPTIONS=--disable-warning=DEP0040 tsx scripts/batchSpecial.ts",
+    "batch:recursive": "NODE_OPTIONS=--disable-warning=DEP0040 tsx scripts/batchRecursive.ts",
     "benchmark": "NODE_OPTIONS=--disable-warning=DEP0040 tsx scripts/benchmark.ts"
   },
   "dependencies": {

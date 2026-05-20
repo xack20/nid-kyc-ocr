@@ -16,7 +16,8 @@ npm run batch            # Alias for scripts/batch.ts
 npm run batch:special    # Alias for scripts/batchSpecial.ts
 
 # CLI scripts (direct)
-npx tsx scripts/runOne.ts --front <path> [--back <path>] [--mode <mode>]
+npx tsx scripts/runOne.ts --image <path> [--mode <mode>]            # auto-detect side
+npx tsx scripts/runOne.ts --front <path> [--back <path>] [--mode <mode>]   # explicit side
 npx tsx scripts/batch.ts [--dir <path>] [--mode <mode>]
 npx tsx scripts/batchSpecial.ts [--dir <path>] [--mode <mode>]
 ```
@@ -58,6 +59,7 @@ src/
 │   ├── imageEnhance.ts       # CLAHE-based enhancement for glare recovery
 │   ├── glareDetection.ts     # luminance-grid scan → glare bounding boxes + coverage
 │   ├── gapDetection.ts       # CV block-split analysis → label-value gap reports (flash/occlusion)
+│   ├── sideClassification.ts # detect & reclassify single-image-with-both-sides combined uploads
 │   ├── fieldValidators.ts    # deterministic validation/routing checks
 │   └── crossFieldCheck.ts    # cross-field consistency checks (cardType↔nidNumber, placeOfBirth, validUntil)
 ├── api/
@@ -86,7 +88,7 @@ scripts/                      # CLI runners (tsx, not compiled)
 | `vision_fed_gemini` | Yes (pre-call) | Image + text context | No function-call quota |
 | `gemini_with_vision_tool` | On-demand | Tool loop | Gemini decides when to OCR |
 | `combined` | Always + tool | Full loop | Maximum accuracy (default) |
-| `smart` | Rich CV + targeted crops | Tier-1 text parser + Tier-2 visual verifier | Adaptive max accuracy with less Pro usage |
+| `smart` | Rich CV + targeted crops | Tier-1 text parser + Tier-2 visual verifier | Adaptive max accuracy with less Pro usage; auto-detects single image containing both sides |
 
 ## NID Field Layout
 
@@ -100,9 +102,11 @@ scripts/                      # CLI runners (tsx, not compiled)
 
 **Smart mode capture-quality hints:** `qualityIssues: string[]` — tags like `"glare_motherNameBn"` flag fields where over-exposure (flash glare) hurt recovery. Empty for clean captures and non-smart modes. Callers can use this to prompt the user to re-upload.
 
+**Smart mode reviewer suggestions:** `suggestions: Record<fieldKey, { estimatedLength, partialVisible, candidates[] }>` — for obliterated/gap-detected fields in smart mode, the highest-confidence (1st) reconstruction is prefilled directly into the field's main `value` (marked with `confidence: "low"` and `needsReview: true`), and up to three *other* alternative full-value candidate reconstructions are populated inside `candidates[]` for the reviewer to choose from. Empty `{}` for clean captures and non-smart modes. UIs typically render `candidates` as clickable chips.
+
 ## API Endpoints
 
-- `POST /extract` — multipart: `front` (required), `back` (optional), `mode` (optional, default: `combined`)
+- `POST /extract` — multipart: provide EITHER `image` (single image, side auto-detected) OR `front` (with optional `back`); plus `mode` (optional, default: `combined`). `front` and `image` are mutually exclusive; `back` is only valid with `front`.
 - `GET /health` — service status + active model
 - `GET /docs` — Swagger UI
 

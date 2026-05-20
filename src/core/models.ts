@@ -6,6 +6,23 @@ const FieldResult = z.object({
   needsReview: z.boolean(),
 });
 
+/**
+ * Reviewer suggestion entry for an obliterated/partially-recovered field.
+ *
+ * Emitted by smart mode's Tier-2 when it can see partial-stroke evidence at
+ * the boundary of a gap-detected zone. Surfaces 1–3 candidate reconstructions
+ * for a human reviewer to pick from. The field's `value` stays conservative
+ * (only what is legible) — suggestions is where candidate guesses live.
+ */
+const SuggestionEntry = z.object({
+  /** Estimated number of Bengali character clusters in the obliterated word. */
+  estimatedLength: z.number().int().min(0),
+  /** Short description of what is actually visible at the boundary (e.g. "ত at right edge"). */
+  partialVisible:  z.string(),
+  /** 1–3 full-value reconstructions, ordered by model confidence. */
+  candidates:      z.array(z.string()).min(1).max(3),
+});
+
 export const NidResultSchema = z.object({
   /**
    * BD NID card variants:
@@ -45,6 +62,17 @@ export const NidResultSchema = z.object({
    * can use this to prompt the user to re-upload a better photo.
    */
   qualityIssues:       z.array(z.string()).default([]),
+
+  /**
+   * Reviewer-facing reconstruction candidates for obliterated fields, keyed by
+   * field name (e.g. "motherNameBn"). Populated by smart mode's Tier-2 when
+   * partial-stroke evidence narrows the obliterated word to a small set of
+   * plausible names from the gender-appropriate vocabulary. Each entry includes
+   * an estimated character count, a description of what is visible, and 1–3
+   * candidate full-value strings for the UI to render as clickable chips.
+   * Empty `{}` for non-smart modes and clean captures.
+   */
+  suggestions:         z.record(SuggestionEntry).default({}),
 });
 
 export type NidResult = z.infer<typeof NidResultSchema>;

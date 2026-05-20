@@ -20,7 +20,14 @@ export type ExtractionMode = (typeof EXTRACTION_MODES)[number];
 export interface NidImage {
   buffer:   Buffer;
   mimeType: string;
-  side:     'front' | 'back' | 'unknown';
+  /**
+   * Logical side of the card this image shows.
+   *   front     — front-side only
+   *   back      — back-side only
+   *   unknown   — caller didn't specify (treated as front by default)
+   *   combined  — single image contains BOTH sides stacked (auto-detected by smart mode)
+   */
+  side:     'front' | 'back' | 'unknown' | 'combined';
 }
 
 // ─── Vision output ────────────────────────────────────────────────────────────

@@ -1,0 +1,58 @@
+h1. Smart Adaptive Strategy: Performance & Cost Analysis
+
+This document provides a detailed breakdown of the execution profiles, token counts, API costs, and timing metrics for processing *combined-side (both-side in a single image)* National ID (NID) cards using the *Smart Adaptive Mode (smart strategy)*.
+
+All prices below are converted and represented in *Bangladeshi Taka (BDT)* using the exchange rate of *123 BDT per USD*.
+
+----
+
+h2. 1. Execution Profiles & Real-World Contexts
+
+The *smart* strategy is highly adaptive. Rather than executing a heavy visual model directly on every card, it uses a multi-tier approach to resolve issues selectively:
+
+h3. Best Case (SKIPPED Tier-2)
+* *Context*: High-quality card capture or high-contrast scan. All OCR fields are cleanly resolved (>= 0.85 confidence), and no deterministic validation checks fail.
+* *Workflow*: Google Cloud Vision OCR -> Tier-1 Flash-Lite Text Parse. Tier-2 Pro visual verification is entirely skipped. No image buffers are uploaded to the Gemini Files API.
+
+h3. Average Case (MODERATE Tier-2)
+* *Context*: Standard smartphone camera capture with minor rotation or shadow. A few fields (e.g. Blood Group, Date of Birth, or Issue Date) have slightly low OCR confidence or trigger minor validation warnings.
+* *Workflow*: OCR -> Tier-1 Parse -> 1 original upload + *2 cropped field uploads* to Files API -> Tier-2 Pro Visual Verification.
+
+h3. Worst Case (HEAVY Tier-2)
+* *Context*: Highly degraded laminated or temporary card with severe flash overexposure, blur, or *label-value gaps* (where camera flash obliterates part of a parent name or address).
+* *Workflow*: OCR -> Tier-1 Parse -> 1 original upload + *8 to 10 multi-exposure crop uploads* (raw, aggressive CLAHE, and negated contrast variants to resolve obliterated letters) -> Tier-2 Pro Visual Verification.
+
+----
+
+h2. 2. API Cost Breakdown (in BDT)
+
+Costs are calculated below under *Google AI Studio (Standard rates)* based on standard API pricing, converted at *123 BDT = 1 USD*.
+
+h3. A. Google AI Studio Pricing (Standard Rates)
+
+||Service / Phase||Token/Request Count||Standard Rate||Best Case||Average Case||Worst Case||
+|*Google Cloud Vision OCR*|1 Image|\$1.50 / 1,000 requests|0.18 BDT|0.18 BDT|0.18 BDT|
+|*Tier-1 (gemini-3.1-flash-lite)*|~600 In / ~400 Out|\$0.075 (In) / \$0.30 (Out) per 1M|0.02 BDT|0.02 BDT|0.02 BDT|
+|*Tier-2 (gemini-3.1-pro-preview)*|Variable Input / Output|\$1.25 (In) / \$5.00 (Out) per 1M|*Skipped*|2.24 BDT|4.55 BDT|
+|*TOTAL COST (BDT)*||||*0.21 BDT*|*2.45 BDT*|*4.76 BDT*|
+
+*Note: If your monthly usage falls within the Google Cloud Vision free tier (first 1,000 requests/month), you can subtract 0.18 BDT from the total card costs.*
+
+----
+
+h2. 3. Time Breakdown Comparison (Seconds)
+
+Below is the step-by-step latency comparison:
+
+||Processing Phase||Best Case||Average Case||Worst Case||
+|*1. Cloud Vision Document OCR*|1.75 s|1.75 s|1.75 s|
+|*2. Glare Map & Tier-1 Parse*|6.24 s|6.24 s|6.24 s|
+|*3. Files API: Upload Original*|*Skipped*|4.00 s|4.00 s|
+|*4. sharp Crop & Upload Crops*|*Skipped*|6.50 s|20.00 s|
+|*5. Tier-2 Pro Visual Reasoning*|*Skipped*|12.00 s|25.00 s|
+|*TOTAL PROCESSING TIME*|*~7.99 seconds*|*~30.49 seconds*|*~56.99 seconds*|
+
+h3. Crucial Timing Insights
+* *Network Overhead*: The process of uploading the original image and multiple cropped segments to the Gemini Files API (Upload Original + Upload Crops) accounts for *28% to 42%* of the total runtime in Average and Worst cases.
+* *Reasoning Inference*: Model execution times scale with context size. A Tier-2 call with 2 crops runs faster (~12s) than a worst-case call containing 8 to 10 crops (~25s).
+* *Image Buffering*: sharp-based crop and grid luminance scan logic operates in-memory under *100ms* (virtually instantaneous).

@@ -23,6 +23,7 @@ import { crossFieldCheck } from '../utils/crossFieldCheck.js';
 import { detectGlare, bboxOverlapsGlare, type GlareReport } from '../utils/glareDetection.js';
 import { enhanceForGlareRecovery, enhanceForGapRecovery, enhanceNegatedForGap } from '../utils/imageEnhance.js';
 import { detectLabelValueGaps, type GapReport } from '../utils/gapDetection.js';
+import { detectCombinedSides, reclassifyLines } from '../utils/sideClassification.js';
 import { config } from '../config/index.js';
 import type { ExtractionResult, NidImage, VisionOutput } from '../core/types.js';
 import type { IExtractionStrategy } from './IExtractionStrategy.js';
@@ -62,6 +63,18 @@ async function uploadOriginalImages(images: NidImage[], timer: StepTimer): Promi
 }
 
 /**
+ * Looks up the NidImage backing a logical side. When the user uploaded a
+ * single image containing BOTH sides (auto-detected via sideClassification),
+ * its `side` is 'combined' — this helper falls back to that combined image
+ * when no exact-side image exists. Used for cropping back-side bboxes against
+ * the combined buffer.
+ */
+function findImageForSide(images: NidImage[], side: NidImage['side']): NidImage | undefined {
+  return images.find(img => img.side === side)
+      ?? images.find(img => img.side === 'combined');
+}
+
+/**
  * Smart adaptive strategy.
  *
  * Flow:
@@ -89,7 +102,25 @@ export class SmartStrategy implements IExtractionStrategy {
         }),
       );
 
-      const allLines = richResults.flatMap(result => result.lines);
+      let allLines = richResults.flatMap(result => result.lines);
+
+      // Combined-sides detection: if a single image was provided and its CV text
+      // contains BOTH front-side and back-side keyword markers, treat it as a
+      // single image containing both card sides. We:
+      //   - mutate that NidImage's side to 'combined'
+      //   - reclassify its lines by Y-coordinate into front/back
+      //   - downstream routing will see providedSides={front,back} for it
+      for (const result of richResults) {
+        if (result.img.side !== 'front' && result.img.side !== 'unknown') continue;
+        const detection = detectCombinedSides(result.lines);
+        if (!detection.isCombined) continue;
+        result.img.side = 'combined';
+        const reclassified = reclassifyLines(result.lines, detection.splitY);
+        // Replace this image's lines in-place inside the shared allLines list
+        result.lines = reclassified;
+      }
+      allLines = richResults.flatMap(result => result.lines);
+
       const visionOutputs: VisionOutput[] = richResults.map(result => ({
         side: result.img.side,
         rawText: result.rawText,
@@ -112,9 +143,17 @@ export class SmartStrategy implements IExtractionStrategy {
         })),
       );
       glareStop();
-      const glareBySide = new Map<NidImage['side'], GlareReport>(
-        glareReports.map(r => [r.side, r.report]),
-      );
+      // Combined images cover both front and back — duplicate their glare report
+      // under both keys so downstream side-based lookups (front/back) find it.
+      const glareBySide = new Map<NidImage['side'], GlareReport>();
+      for (const r of glareReports) {
+        if (r.side === 'combined') {
+          glareBySide.set('front', r.report);
+          glareBySide.set('back',  r.report);
+        } else {
+          glareBySide.set(r.side, r.report);
+        }
+      }
 
       const tier1Stop = timer.start('gemini_tier1_text_parse');
       const tier1Interaction = await geminiClient().interactions.create({
@@ -163,7 +202,16 @@ export class SmartStrategy implements IExtractionStrategy {
           parseErr instanceof Error ? parseErr.message : parseErr);
       }
 
-      const providedSides = new Set(images.map(img => img.side));
+      // Build providedSides — treating 'combined' images as providing BOTH sides.
+      const providedSides = new Set<NidImage['side']>();
+      for (const img of images) {
+        if (img.side === 'combined') {
+          providedSides.add('front');
+          providedSides.add('back');
+        } else {
+          providedSides.add(img.side);
+        }
+      }
       const baseRouting = tier1
         ? routeSmartFields(tier1, config.smart.cvConfidenceThreshold, providedSides)
         : NID_FIELD_KEYS.map((field): SmartRoutingDecision => ({
@@ -223,7 +271,7 @@ export class SmartStrategy implements IExtractionStrategy {
       const ensureEnhancedSide = async (side: NidImage['side']): Promise<string | null> => {
         const cached = enhancedFullSideUris[side];
         if (cached) return cached;
-        const img = images.find(i => i.side === side);
+        const img = findImageForSide(images, side);
         if (!img) return null;
         const enhStop = timer.start('enhance_image');
         const enhanced = await enhanceForGlareRecovery(img.buffer);
@@ -244,7 +292,7 @@ export class SmartStrategy implements IExtractionStrategy {
         //   variant 3 (negated)    — glare→dark, strokes→bright (ৎ edge pop)
         const gapReport = gapByField.get(decision.field);
         if (gapReport && providedSides.has(gapReport.side)) {
-          const image = images.find(img => img.side === gapReport.side);
+          const image = findImageForSide(images, gapReport.side);
           if (image) {
             const enhStop = timer.start('enhance_image');
             const [aggressiveBuf, negatedBuf] = await Promise.all([
@@ -290,7 +338,7 @@ export class SmartStrategy implements IExtractionStrategy {
           source?.side ?? expectedSideForField(decision.field, cardTypeForRouting);
         if (!targetSide || !providedSides.has(targetSide)) continue;
 
-        const image = images.find(img => img.side === targetSide);
+        const image = findImageForSide(images, targetSide);
         if (!image) continue;
 
         const box = source && source.lineIds.length > 0

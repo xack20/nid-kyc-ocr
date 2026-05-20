@@ -8,6 +8,16 @@ const fieldResultSchema = {
   },
 };
 
+const suggestionEntrySchema = {
+  type: 'object',
+  required: ['estimatedLength', 'partialVisible', 'candidates'],
+  properties: {
+    estimatedLength: { type: 'integer', minimum: 0 },
+    partialVisible:  { type: 'string' },
+    candidates:      { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 3 },
+  },
+};
+
 const fieldKeys = [
   'nidNumber', 'nameEn', 'nameBn', 'dateOfBirth',
   'fatherNameBn', 'motherNameBn', 'addressBn',
@@ -28,6 +38,7 @@ export const NID_JSON_SCHEMA = {
     overallConfidence:   { type: 'string', enum: ['high', 'medium', 'low'] },
     fieldsNeedingReview: { type: 'array', items: { type: 'string' } },
     qualityIssues:       { type: 'array', items: { type: 'string' } },
+    suggestions:         { type: 'object', additionalProperties: suggestionEntrySchema },
     ...Object.fromEntries(fieldKeys.map(k => [k, fieldResultSchema])),
   },
 } as const;

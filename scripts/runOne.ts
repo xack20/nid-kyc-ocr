@@ -2,10 +2,16 @@
  * Run extraction on a single NID image (or front+back pair).
  *
  * Usage:
- *   npx tsx scripts/runOne.ts --front <path> [--back <path>] [--mode <mode>]
+ *   npx tsx scripts/runOne.ts --image <path>                 # single image, side auto-detected
+ *   npx tsx scripts/runOne.ts --front <path>                 # explicit front-only
+ *   npx tsx scripts/runOne.ts --front <front> --back <back>  # both sides separately
+ *   Optional: --mode <mode>
  *
  * Modes: gemini_only | vision_only | vision_to_gemini | vision_fed_gemini |
  *        gemini_with_vision_tool | combined | smart
+ *
+ * Use --image when the photo may be the front, the back, or a combined image
+ * containing both sides stacked. Smart mode will auto-detect.
  */
 import 'dotenv/config';
 import { readFile, writeFile, mkdir } from 'fs/promises';
@@ -18,17 +24,37 @@ import { mimeFromExt }                 from '../src/utils/mime.js';
 import { ts }                          from '../src/utils/timestamp.js';
 
 const args = minimist(process.argv.slice(2), {
-  string:  ['front', 'back', 'mode'],
+  string:  ['front', 'back', 'image', 'mode'],
   default: { mode: 'combined' },
 });
 
 const frontPath: string | undefined = args['front'];
 const backPath:  string | undefined = args['back'];
+const imagePath: string | undefined = args['image'];
 const mode = args['mode'] as ExtractionMode;
 
-if (!frontPath) {
-  console.error('Usage: npx tsx scripts/runOne.ts --front <path> [--back <path>] [--mode <mode>]');
-  console.error(`Modes: ${EXTRACTION_MODES.join(' | ')}`);
+// ── Validation ────────────────────────────────────────────────────────────
+const usage = [
+  'Usage:',
+  '  npx tsx scripts/runOne.ts --image <path>                 # single image, side auto-detected',
+  '  npx tsx scripts/runOne.ts --front <path>                 # explicit front-only',
+  '  npx tsx scripts/runOne.ts --front <front> --back <back>  # both sides separately',
+  `  Modes: ${EXTRACTION_MODES.join(' | ')}`,
+].join('\n');
+
+if (!frontPath && !imagePath) {
+  console.error('Error: must provide either --image or --front.');
+  console.error(usage);
+  process.exit(1);
+}
+
+if (frontPath && imagePath) {
+  console.error('Error: --front and --image are mutually exclusive. Use one or the other.');
+  process.exit(1);
+}
+
+if (imagePath && backPath) {
+  console.error('Error: --back can only accompany --front, not --image.');
   process.exit(1);
 }
 
@@ -37,12 +63,16 @@ if (!EXTRACTION_MODES.includes(mode)) {
   process.exit(1);
 }
 
+// Resolve the primary input path (one of front/image is set)
+const primaryPath = (frontPath ?? imagePath)!;
+const primarySide: NidImage['side'] = frontPath ? 'front' : 'unknown';
+
 async function main() {
   const images: NidImage[] = [
     {
-      buffer:   await readFile(frontPath!),
-      mimeType: mimeFromExt(extname(frontPath!)),
-      side:     'front',
+      buffer:   await readFile(primaryPath),
+      mimeType: mimeFromExt(extname(primaryPath)),
+      side:     primarySide,
     },
   ];
 
@@ -55,7 +85,8 @@ async function main() {
   }
 
   console.log(`\nMode    : ${mode}`);
-  console.log(`Front   : ${frontPath}`);
+  if (imagePath) console.log(`Image   : ${imagePath}  (side: unknown — auto-detect)`);
+  else           console.log(`Front   : ${frontPath}`);
   if (backPath) console.log(`Back    : ${backPath}`);
   console.log('─'.repeat(64));
 
@@ -103,8 +134,13 @@ async function main() {
   // ── Save output ───────────────────────────────────────────────────
   const OUTPUT_DIR = './outputs';
   await mkdir(OUTPUT_DIR, { recursive: true });
-  const outFile = join(OUTPUT_DIR, `${basename(frontPath!)}_${mode}_${ts()}.json`);
-  await writeFile(outFile, JSON.stringify({ frontPath, backPath: backPath ?? null, ...result }, null, 2), 'utf-8');
+  const outFile = join(OUTPUT_DIR, `${basename(primaryPath)}_${mode}_${ts()}.json`);
+  await writeFile(outFile, JSON.stringify({
+    frontPath: frontPath ?? null,
+    imagePath: imagePath ?? null,
+    backPath:  backPath  ?? null,
+    ...result,
+  }, null, 2), 'utf-8');
   console.log(`\nSaved → ${outFile}`);
 }
 

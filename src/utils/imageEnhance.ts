@@ -11,8 +11,16 @@ import sharp from 'sharp';
  * Emitted as JPEG q=92 — same quality as imageCrop.ts so the Files API payload
  * stays comparable across modes.
  */
-export async function enhanceForGlareRecovery(buffer: Buffer): Promise<Buffer> {
+async function ensureUcharBuffer(buffer: Buffer): Promise<Buffer> {
   return sharp(buffer)
+    .flatten({ background: { r: 255, g: 255, b: 255 } })
+    .jpeg({ quality: 100 })
+    .toBuffer();
+}
+
+export async function enhanceForGlareRecovery(buffer: Buffer): Promise<Buffer> {
+  const ucharBuffer = await ensureUcharBuffer(buffer);
+  return sharp(ucharBuffer)
     .clahe({ width: 50, height: 50, maxSlope: 3 })
     .normalise()
     .jpeg({ quality: 92 })
@@ -30,7 +38,8 @@ export async function enhanceForGlareRecovery(buffer: Buffer): Promise<Buffer> {
  * and the "ৎ" character at the right edge is better resolved than with tile=50.
  */
 export async function enhanceForGapRecovery(buffer: Buffer): Promise<Buffer> {
-  return sharp(buffer)
+  const ucharBuffer = await ensureUcharBuffer(buffer);
+  return sharp(ucharBuffer)
     .clahe({ width: 20, height: 20, maxSlope: 5 })
     .gamma(2.4)
     .normalise()
