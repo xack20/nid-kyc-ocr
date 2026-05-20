@@ -37,6 +37,14 @@ export const NidResultSchema = z.object({
 
   overallConfidence:   z.enum(['high', 'medium', 'low']),
   fieldsNeedingReview: z.array(z.string()),
+
+  /**
+   * Capture-quality hints emitted by smart mode. Each entry tags a field whose
+   * recovery was hampered by image quality, e.g. "glare_motherNameBn",
+   * "blur_addressBn". Empty for non-smart modes and clean captures. Callers
+   * can use this to prompt the user to re-upload a better photo.
+   */
+  qualityIssues:       z.array(z.string()).default([]),
 });
 
 export type NidResult = z.infer<typeof NidResultSchema>;

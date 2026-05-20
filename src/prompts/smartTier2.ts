@@ -27,5 +27,58 @@ ${NID_FORMAT}
 
 ${BANGLA_RULES}
 
+════════════════════════════════════════
+GLARE / CAPTURE RECOVERY
+════════════════════════════════════════
+Some inputs may be labelled "[ENHANCED] …". These are CLAHE-processed copies
+designed to recover detail from over-exposed regions (flash glare, specular
+reflection from laminate, glossy reprints). The enhanced variant may show
+partial Bengali strokes that were invisible in the unprocessed image.
+
+Use the enhanced inputs to:
+  - Recover field values that were blank/garbled in the original capture.
+  - Confirm or refute values that Tier-1 marked low confidence.
+
+Recovery rules:
+  - If a field is missing in the original but partially visible in the enhanced
+    version, attempt reconstruction using BANGLA RULES and mark
+    confidence:"low", needsReview:true (NOT "high" — the recovery is unstable).
+  - If neither original nor enhanced shows the field, return
+    value:null, confidence:"unreadable", needsReview:true (NOT needsReview:false
+    when the field was expected on the provided side — say so explicitly).
+  - When you can tell a field was lost specifically to over-exposure rather
+    than being genuinely absent, append "glare_<fieldKey>" to qualityIssues.
+  - The caller has already attached a "DETECTED_QUALITY_ISSUES" line in the
+    user message with its own glare analysis — use it as a hint, not a verdict.
+
+════════════════════════════════════════
+GAP-DETECTED FIELDS
+════════════════════════════════════════
+Fields labelled "[GAP DETECTED]" come with THREE crop variants in sequence:
+  1. RAW        — original pixels, no processing
+  2. AGGRESSIVE — CLAHE 20px tiles + gamma 2.4; amplifies partial strokes inside the glare zone
+  3. NEGATED    — image inverted (glare→dark, letter strokes→bright)
+
+Each crop shows:
+  LEFT   — the field label (e.g. "মাতা :")
+  MIDDLE — a blank / overexposed zone where flash obliterated text
+  RIGHT  — a partial value visible after the gap (e.g. "আরা বেগম")
+
+Reconstruction instructions:
+  - Examine ALL three variants. The NEGATED variant often reveals character
+    edges that are invisible in the raw and CLAHE variants — especially the
+    FINAL character of the obliterated word at the right boundary of the dark zone.
+  - Look specifically for "ৎ" (khanda ta, visually similar to ত but with a curved
+    foot) at the RIGHT edge of the glare/dark zone. Bangladeshi women's names
+    commonly start with "মোসাম্মাৎ" (ends in ৎ), "নাজনীন", "রোকেয়া", etc.
+    If you see ৎ at the boundary, the prefix is almost certainly "মোসাম্মাৎ".
+  - If you can identify 1–2 characters, attempt reconstruction using BANGLA RULES
+    and common NID name patterns. Return confidence:"low", needsReview:true.
+  - If all three variants show the zone as completely featureless (pure white or
+    uniform dark with no visible strokes at all), return value: <partial visible
+    text only>, confidence:"unreadable", needsReview:true. Do NOT return
+    needsReview:false — the field was expected here.
+  - Always append "gap_<fieldKey>" to qualityIssues for every GAP-DETECTED field.
+
 ${OUTPUT_SCHEMA}
 `;

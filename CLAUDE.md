@@ -39,7 +39,8 @@ src/
 │   ├── geminiOnly.ts         # Image-only prompt
 │   ├── visionToGemini.ts     # CV text-only prompt
 │   ├── smartTier1.ts         # Smart mode CV text parser prompt
-│   └── smartTier2.ts         # Smart mode targeted visual verifier prompt
+│   ├── smartTier2.ts         # Smart mode targeted visual verifier prompt
+│   └── smartArbitration.ts   # Smart mode arbitration prompt (final conflict resolution)
 ├── strategies/               # Strategy pattern — one class per extraction mode
 │   ├── IExtractionStrategy.ts
 │   ├── geminiOnly.ts         # Gemini reads images directly, no Cloud Vision
@@ -54,7 +55,11 @@ src/
 │   ├── timestamp.ts          # ts() — filesystem-safe timestamp string
 │   ├── json.ts               # extractJson() — pulls first JSON object from text
 │   ├── imageCrop.ts          # sharp-based crop helper for smart mode
-│   └── fieldValidators.ts    # deterministic validation/routing checks
+│   ├── imageEnhance.ts       # CLAHE-based enhancement for glare recovery
+│   ├── glareDetection.ts     # luminance-grid scan → glare bounding boxes + coverage
+│   ├── gapDetection.ts       # CV block-split analysis → label-value gap reports (flash/occlusion)
+│   ├── fieldValidators.ts    # deterministic validation/routing checks
+│   └── crossFieldCheck.ts    # cross-field consistency checks (cardType↔nidNumber, placeOfBirth, validUntil)
 ├── api/
 │   ├── middleware/upload.ts  # Multer config
 │   ├── middleware/errorHandler.ts
@@ -93,6 +98,8 @@ scripts/                      # CLI runners (tsx, not compiled)
 
 **Temporary NID only:** `validUntil`
 
+**Smart mode capture-quality hints:** `qualityIssues: string[]` — tags like `"glare_motherNameBn"` flag fields where over-exposure (flash glare) hurt recovery. Empty for clean captures and non-smart modes. Callers can use this to prompt the user to re-upload.
+
 ## API Endpoints
 
 - `POST /extract` — multipart: `front` (required), `back` (optional), `mode` (optional, default: `combined`)
@@ -105,7 +112,14 @@ scripts/                      # CLI runners (tsx, not compiled)
 GEMINI_API_KEY=...
 GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
 GEMINI_MODEL=gemini-3.1-pro-preview   # optional override
+GEMINI_THINKING_LEVEL=high            # minimal|low|medium|high
 PORT=3000
+
+# Smart adaptive mode (optional overrides)
+SMART_TIER1_MODEL=gemini-3.1-flash-lite   # fast text parser
+SMART_TIER2_MODEL=gemini-3.1-pro-preview  # visual verifier (defaults to GEMINI_MODEL)
+SMART_CV_CONF_THRESHOLD=0.85              # CV word confidence required to auto-pass a field
+SMART_MAX_TIER2_FIELDS=8                  # max fields sent for visual verification per run
 ```
 
 ## Compliance

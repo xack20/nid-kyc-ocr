@@ -27,6 +27,7 @@ export const NID_JSON_SCHEMA = {
     cardType:            { type: 'string', enum: ['smart', 'laminated', 'temporary', 'unknown'] },
     overallConfidence:   { type: 'string', enum: ['high', 'medium', 'low'] },
     fieldsNeedingReview: { type: 'array', items: { type: 'string' } },
+    qualityIssues:       { type: 'array', items: { type: 'string' } },
     ...Object.fromEntries(fieldKeys.map(k => [k, fieldResultSchema])),
   },
 } as const;

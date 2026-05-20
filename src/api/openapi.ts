@@ -41,6 +41,11 @@ const nidResult = {
     validUntil:   { ...fieldResult, description: 'Validity/expiry date — Temporary NID only (বৈধতার মেয়াদ). Null for smart/laminated.' },
     overallConfidence:   { type: 'string', enum: ['high', 'medium', 'low'] },
     fieldsNeedingReview: { type: 'array', items: { type: 'string' }, description: 'List of field keys where needsReview is true' },
+    qualityIssues:       {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Smart-mode capture-quality hints (e.g. "glare_motherNameBn", "blur_addressBn"). Empty for non-smart modes and clean captures. Callers may use this to prompt the user to re-upload a better photo.',
+    },
   },
 };
 

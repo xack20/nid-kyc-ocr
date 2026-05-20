@@ -22,10 +22,17 @@ Return ONLY a valid JSON object — no markdown fences, no explanation:
   "validUntil":   { "value": string | null, "confidence": "high"|"low"|"unreadable", "needsReview": boolean },
 
   "overallConfidence": "high" | "medium" | "low",
-  "fieldsNeedingReview": string[]
+  "fieldsNeedingReview": string[],
+  "qualityIssues": string[]
 }
 
 Confidence rules:
   The ONLY valid values are exactly: "high", "low", "unreadable" — NEVER "medium" or any other value.
   needsReview: true whenever confidence is "low" or "unreadable" AND the field was expected on the provided side.
-  Field not present on this card variant OR not on the provided image side → value: null, confidence: "unreadable", needsReview: false.`;
+  Field not present on this card variant OR not on the provided image side → value: null, confidence: "unreadable", needsReview: false.
+
+qualityIssues:
+  Capture-quality hints — typically empty. Append "glare_<fieldKey>" when a field
+  was lost or degraded specifically by over-exposure / flash glare. Other tags
+  like "blur_<fieldKey>" may appear in future. Non-smart modes should leave this
+  as an empty array.`;

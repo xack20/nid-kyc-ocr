@@ -103,6 +103,7 @@ FIELD PARSING RULES (all variants)
 2.  নাম: / নাম label → nameBn
 3.  Name: / Name label → nameEn
 4.  পিতা: / পিতা label → fatherNameBn
+    স্বামী: / স্বামী label → fatherNameBn (female holders: husband replaces father in this field)
 5.  মাতা: / মাতা label → motherNameBn
 6.  Date of Birth / জন্ম তারিখ → dateOfBirth (normalise to DD MMM YYYY)
 7.  ID NO: / NID No / NID নম্বর → nidNumber (digits only, strip spaces, 10/13/17 chars)

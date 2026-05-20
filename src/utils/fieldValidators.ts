@@ -1,6 +1,41 @@
 import type { NidResult } from '../core/models.js';
 import type { NidFieldKey, SmartRoutingDecision, Tier1SmartResult } from '../core/smartTypes.js';
 import { NID_FIELD_KEYS } from '../core/smartTypes.js';
+import type { NidImage } from '../core/types.js';
+
+// ─── Field-side layout (which fields are expected on which side per variant) ─
+
+const FRONT_FIELDS:    NidFieldKey[] = ['nidNumber','nameEn','nameBn','dateOfBirth','fatherNameBn','motherNameBn'];
+const BACK_FIELDS:     NidFieldKey[] = ['addressBn','bloodGroup','issueDate'];
+const SMART_BACK_ONLY: NidFieldKey[] = ['placeOfBirth'];
+const TEMP_ONLY:       NidFieldKey[] = ['validUntil'];
+
+/**
+ * Returns true if this field should appear on at least one of the provided sides
+ * for the given card variant. Used by routing to differentiate genuinely-absent
+ * fields (e.g. placeOfBirth on a laminated NID) from expected-but-missing fields
+ * (likely a capture issue — flash glare, blur, occlusion).
+ */
+export function isFieldExpectedOnSides(
+  field:         NidFieldKey,
+  providedSides: ReadonlySet<NidImage['side']>,
+  cardType:      NidResult['cardType'],
+): boolean {
+  if (FRONT_FIELDS.includes(field))    return providedSides.has('front');
+  if (BACK_FIELDS.includes(field))     return providedSides.has('back');
+  if (SMART_BACK_ONLY.includes(field)) return providedSides.has('back') && cardType === 'smart';
+  if (TEMP_ONLY.includes(field))       return cardType === 'temporary';
+  return false;
+}
+
+/** Returns the side a field is expected to appear on (or null for variant-specific fields). */
+export function expectedSideForField(field: NidFieldKey, cardType: NidResult['cardType']): NidImage['side'] | null {
+  if (FRONT_FIELDS.includes(field))    return 'front';
+  if (BACK_FIELDS.includes(field))     return 'back';
+  if (SMART_BACK_ONLY.includes(field)) return cardType === 'smart' ? 'back' : null;
+  if (TEMP_ONLY.includes(field))       return cardType === 'temporary' ? 'front' : null;
+  return null;
+}
 
 const BLOOD_GROUPS = new Set(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']);
 const MONTHS = new Set(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
@@ -76,8 +111,10 @@ export function validateNidResult(result: NidResult): ValidationIssue[] {
 export function routeSmartFields(
   tier1: Tier1SmartResult,
   cvConfidenceThreshold: number,
+  providedSides: ReadonlySet<NidImage['side']>,
 ): SmartRoutingDecision[] {
   const validationIssues = validateNidResult(tier1.extraction);
+  const cardType = tier1.extraction.cardType;
 
   return NID_FIELD_KEYS.map((field) => {
     const fieldResult = tier1.extraction[field];
@@ -85,7 +122,16 @@ export function routeSmartFields(
     const validationIssue = validationIssues.find(issue => issue.field === field);
 
     if (!fieldResult.value && !fieldResult.needsReview) {
-      return { field, action: 'absent', reason: 'Field not expected or not present on provided side', source };
+      // Differentiate genuinely-absent (not expected) from expected-but-missing (capture issue).
+      if (isFieldExpectedOnSides(field, providedSides, cardType)) {
+        return {
+          field,
+          action: 'verify',
+          reason: 'expected_field_missing_from_ocr — capture issue suspected (flash/blur/occlusion)',
+          source,
+        };
+      }
+      return { field, action: 'absent', reason: 'Not expected on provided side(s) for this card variant', source };
     }
 
     if (
